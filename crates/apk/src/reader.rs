@@ -20,15 +20,24 @@ pub struct ApkMetadata {
     pub entries: usize,
 }
 
+struct ArchiveInfo {
+    ///Number of files in the APK 
+    entries: usize,
+    ///Number of DEX files 
+    dex_count: usize,
+    ///Native architectures
+    architectures: Vec<String>,
+}
+
 //Read APK Files
 pub struct ApkReader; 
 impl ApkReader {
-    fn get_file_size(path: impl AsRef<Path>) -> Result<u64, ApkError>{
+    fn get_file_size(path: impl AsRef<Path>) -> Result<u64, ApkError> {
         let metadata = fs::metadata(path)?;
         Ok(metadata.len())
     }
     
-    fn compute_sha(path: impl AsRef<Path>) -> Result<String, ApkError>{
+    fn compute_sha(path: impl AsRef<Path>) -> Result<String, ApkError> {
         let file = File::open(&path)?;
         let mut reader = BufReader::new(file);
         let mut hasher = Sha256::new();
@@ -45,19 +54,43 @@ impl ApkReader {
         Ok(format!("{:x}", hash))
     }
 
-
-    pub fn read(path: impl AsRef<Path>) -> Result<ApkMetadata, ApkError> {
-        let file = File::open(&path)?;
-        let archive = ZipArchive::new(file)?;
-        
-        let metadata = ApkMetadata {
-            sha256: Self::compute_sha(&path)?,
-            file_size: Self::get_file_size(&path)?,
+    fn analyze_archive<R: Read + std::io::Seek>(archive: &mut ZipArchive<R>) -> Result<ArchiveInfo, ApkError> {
+        let mut info = ArchiveInfo {
             entries: archive.len(),
             dex_count: 0,
             architectures: Vec::new(),
         };
 
-        Ok(metadata)
+        for i in 0..archive.len() {
+            let file = archive.by_index(i)?;
+            let name = file.name();
+            if name.starts_with("classes") && name.ends_with(".dex") {
+                info.dex_count += 1;
+            }
+            if name.ends_with(".so") {
+                if let Some(rest) = name.strip_prefix("lib/") {
+                    if let Some(arch) = rest.split('/').next() {
+                        if !info.architectures.iter().any(|a| a == arch) {
+                            info.architectures.push(arch.to_string());
+                        }
+                    }
+                }
+            }
+            println!("{}", name);
+        }
+        Ok(info)
+    }
+
+    pub fn read(path: impl AsRef<Path>) -> Result<ApkMetadata, ApkError> {
+        let file = File::open(&path)?;
+        let mut archive = ZipArchive::new(file)?;
+        let archive_info = Self::analyze_archive(&mut archive)?;
+        Ok(ApkMetadata {
+            sha256: Self::compute_sha(&path)?,
+            file_size: Self::get_file_size(&path)?,
+            entries: archive_info.entries,
+            dex_count: archive_info.dex_count,
+            architectures: archive_info.architectures,
+        })
     }
 }
