@@ -1,0 +1,1 @@
+/home/wrench/rutken_static_analyzer/target/debug/cli: /home/wrench/rutken_static_analyzer/cli/src/main.rs /home/wrench/rutken_static_analyzer/crates/apk/src/errors.rs /home/wrench/rutken_static_analyzer/crates/apk/src/lib.rs /home/wrench/rutken_static_analyzer/crates/apk/src/reader.rs

@@ -1,5 +1,7 @@
 use std::path::Path;
+use std::fs::File;
 use crate::errors::ApkError;
+use zip::ZipArchive;
 
 #[derive(Debug)]
 pub struct ApkMetadata {
@@ -19,6 +21,10 @@ pub struct ApkMetadata {
 pub struct ApkReader; 
 impl ApkReader {
     pub fn read(path: impl AsRef<Path>) -> Result<ApkMetadata, ApkError> {
+        let file = File::open(path)?;
+        let archive = ZipArchive::new(file)?;
+        println!("Entries: {}", archive.len());
+
         todo!()
     }
 }
