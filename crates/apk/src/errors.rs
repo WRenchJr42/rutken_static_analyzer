@@ -7,4 +7,7 @@ pub enum ApkError {
 
     #[error("Zip error: {0}")]
     Zip(#[from] zip::result::ZipError),
+
+    #[error("Invalid APK format: {0}")]
+    InvalidFormat(String),
 }

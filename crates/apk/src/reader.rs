@@ -5,6 +5,8 @@ use crate::errors::ApkError;
 use zip::ZipArchive;
 use sha2::{Digest, Sha256};
 use std::io::{BufReader, Read};
+use crate::manifest::ManifestParser;
+use crate::axml::parser::AxmlParser;
 
 #[derive(Debug)]
 pub struct ApkMetadata {
@@ -76,7 +78,6 @@ impl ApkReader {
                     }
                 }
             }
-            println!("{}", name);
         }
         Ok(info)
     }
@@ -84,6 +85,14 @@ impl ApkReader {
     pub fn read(path: impl AsRef<Path>) -> Result<ApkMetadata, ApkError> {
         let file = File::open(&path)?;
         let mut archive = ZipArchive::new(file)?;
+
+        let manifest_bytes = ManifestParser::extract(&mut archive)?;
+        println!("Manifest size: {} bytes", manifest_bytes.len());
+        
+        let manifest = ManifestParser::extract(&mut archive)?;
+        let header = AxmlParser::parse(&manifest)?;
+        println!("{:#?}", header);
+
         let archive_info = Self::analyze_archive(&mut archive)?;
         Ok(ApkMetadata {
             sha256: Self::compute_sha(&path)?,
