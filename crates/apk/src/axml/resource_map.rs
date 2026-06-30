@@ -1,5 +1,6 @@
 use crate::errors::ApkError;
 use crate::binary::BinaryReader;
+use crate::axml::constants::*;
 
 #[derive(Debug)]
 pub struct ResourceMap {
@@ -13,11 +14,7 @@ impl ResourceMap {
         let chunk_size = reader.read_u32()?;
         let count = ((chunk_size - header_size as u32) / 4) as usize;
         
-        println!("Next chunk: 0x{:04x}", chunk_type);
-        println!("Header size: {}", header_size);
-        println!("Chunk size: {}", chunk_size);
-
-        if chunk_type != 0x0180 {
+              if chunk_type != RES_XML_RESOURCE_MAP {
             return Err(ApkError::InvalidFormat("Expected Resource Map chunk".to_string()));
         }
         if header_size != 8 {

@@ -1,0 +1,8 @@
+pub const RES_STRING_POOL_TYPE: u16 = 0x0001;
+pub const RES_XML_TYPE: u16 = 0x0003;
+pub const RES_XML_START_NAMESPACE: u16 = 0x0100;
+pub const RES_XML_END_NAMESPACE: u16 = 0x0101;
+pub const RES_XML_START_ELEMENT: u16 = 0x0102;
+pub const RES_XML_END_ELEMENT: u16 = 0x0103;
+pub const RES_XML_CDATA: u16 = 0x0104;
+pub const RES_XML_RESOURCE_MAP: u16 = 0x0180;

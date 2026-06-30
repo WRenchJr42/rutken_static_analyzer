@@ -53,7 +53,6 @@ impl StringPool {
         for _ in 0..header.string_count {
             offsets.push(reader.read_u32()?);
         }
-        println!("Offsets: {:#?}", offsets);
         for offset in offsets {
             let absolute = chunk_start + header.strings_start as usize + offset as usize;
             let mut string_reader = reader.clone_at(absolute)?;

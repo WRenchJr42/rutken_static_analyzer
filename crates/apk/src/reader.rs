@@ -86,13 +86,10 @@ impl ApkReader {
         let file = File::open(&path)?;
         let mut archive = ZipArchive::new(file)?;
 
-        let manifest_bytes = ManifestParser::extract(&mut archive)?;
-        println!("Manifest size: {} bytes", manifest_bytes.len());
-        
+        let _manifest_bytes = ManifestParser::extract(&mut archive)?;
         let manifest = ManifestParser::extract(&mut archive)?;
         let document = AxmlParser::parse(&manifest)?;
-        println!("{:#?}", document);
-
+        println!("Strings: {}, Resources: {}", document.string_pool.strings.len(), document.resource_map.resources.len());
         let archive_info = Self::analyze_archive(&mut archive)?;
         Ok(ApkMetadata {
             sha256: Self::compute_sha(&path)?,

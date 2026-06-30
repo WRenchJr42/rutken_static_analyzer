@@ -3,6 +3,7 @@ use crate::errors::ApkError;
 use crate::binary::BinaryReader;
 use crate::axml::string_pool::StringPool;
 use crate::axml::resource_map::ResourceMap;
+use crate::axml::chunks::ChunkHeader;
 
 #[derive(Debug)]
 pub struct AxmlDocument {
@@ -23,7 +24,13 @@ impl AxmlParser {
     let header = AxmlHeader::parse(&mut reader)?;
     let string_pool = StringPool::parse(&mut reader)?;
     let resource_map = ResourceMap::parse(&mut reader)?;
-
+    
+    while reader.remaining() > 0 {
+        let chunk = ChunkHeader::parse(&mut reader)?;
+        println!("{:#?}", chunk);
+        break;
+    }
+        
     Ok(AxmlDocument {
         header,
         string_pool,
