@@ -19,6 +19,17 @@ impl<'a> BinaryReader<'a> {
         self.offset
     }
 
+    ///Clone at another offset
+    pub fn clone_at(&self, offset: usize) -> Result<Self, ApkError> {
+        if offset > self.bytes.len() {
+            return Err(ApkError::InvalidFormat("Offset beyonf buffer".to_string()));
+        }
+        Ok(Self {
+            bytes: self.bytes,
+            offset,
+        })
+    }
+
     ///Bounds Check
     fn ensure_available(&self, count: usize) -> Result<(), ApkError> {
         if self.offset + count > self.bytes.len() {
