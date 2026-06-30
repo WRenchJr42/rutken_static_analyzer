@@ -4,6 +4,7 @@ use crate::binary::BinaryReader;
 use crate::axml::string_pool::StringPool;
 use crate::axml::resource_map::ResourceMap;
 use crate::axml::chunks::ChunkHeader;
+use crate::axml::namespace::StartNamespace;
 
 #[derive(Debug)]
 pub struct AxmlDocument {
@@ -28,6 +29,8 @@ impl AxmlParser {
     while reader.remaining() > 0 {
         let chunk = ChunkHeader::parse(&mut reader)?;
         println!("{:#?}", chunk);
+        let namespace = StartNamespace::parse(&mut reader)?;
+        println!("{} -> {}",string_pool.strings[namespace.prefix as usize], string_pool.strings[namespace.uri as usize]);
         break;
     }
         
