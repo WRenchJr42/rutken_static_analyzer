@@ -7,6 +7,7 @@ use crate::axml::chunks::ChunkHeader;
 use crate::axml::namespace::StartNamespace;
 use crate::axml::element::StartElement;
 use crate::axml::constants::*;
+use crate::axml::resolve::resolve_attribute;
 
 #[derive(Debug)]
 pub struct AxmlDocument {
@@ -39,6 +40,14 @@ impl AxmlParser {
                 let element = StartElement::parse(&mut reader)?;
                 println!("{:#?}", element);
                 println!("Element: {}", string_pool.strings[element.name as usize]);
+                for attribute in &element.attributes {
+                    let resolved = resolve_attribute(attribute, &string_pool);
+                    if let Some(ns) = resolved.namespace {
+                        println!("{}:{} = {}", ns, resolved.name, resolved.value);
+                    } else {
+                        println!("{} = {}", resolved.name, resolved.value);
+                    }
+                }
             }
             _ => {
                 println!("Unknown chunk: 0x{:04x}", chunk.chunk_type);

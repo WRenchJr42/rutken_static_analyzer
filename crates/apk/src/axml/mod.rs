@@ -7,3 +7,4 @@ pub mod constants;
 pub mod namespace;
 pub mod element;
 pub mod attribute;
+pub mod resolve;
