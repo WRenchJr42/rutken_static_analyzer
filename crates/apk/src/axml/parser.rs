@@ -2,29 +2,32 @@ use crate::axml::header::AxmlHeader;
 use crate::errors::ApkError;
 use crate::binary::BinaryReader;
 use crate::axml::string_pool::StringPool;
+use crate::axml::resource_map::ResourceMap;
+
+#[derive(Debug)]
+pub struct AxmlDocument {
+    pub header: AxmlHeader,
+    pub string_pool: StringPool,
+    pub resource_map: ResourceMap,
+}
 
 pub struct AxmlParser;
 
 impl AxmlParser {
-    pub fn parse(bytes: &[u8]) -> Result<AxmlHeader, ApkError> {
+    pub fn parse(bytes: &[u8]) -> Result<AxmlDocument, ApkError> {
     if bytes.len() < 8 {
         return Err(ApkError::InvalidFormat("Manifest too small".to_string()));
     }
     
     let mut reader = BinaryReader::new(bytes);
-    
-    let chunk_type = reader.read_u16()?;
-    let header_size = reader.read_u16()?;
-    let file_size = reader.read_u32()?;
-    
-    let header = AxmlHeader {
-         chunk_type,
-         header_size,
-         file_size,
-    };
-    println!("{:#?}", header);
+    let header = AxmlHeader::parse(&mut reader)?;
     let string_pool = StringPool::parse(&mut reader)?;
-    println!("{:#?}", string_pool);
-    Ok(AxmlHeader {chunk_type, header_size, file_size})
+    let resource_map = ResourceMap::parse(&mut reader)?;
+
+    Ok(AxmlDocument {
+        header,
+        string_pool,
+        resource_map,
+    })
     }
 }

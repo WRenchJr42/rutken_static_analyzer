@@ -48,7 +48,7 @@ impl StringPool {
         let chunk_start = reader.position();
         let header = StringPoolHeader::parse(reader)?;
         let mut offsets = Vec::new();
-        let strings_start = header.strings_start as usize;
+        let _strings_start = header.strings_start as usize;
         let mut strings = Vec::new();
         for _ in 0..header.string_count {
             offsets.push(reader.read_u32()?);
@@ -60,6 +60,7 @@ impl StringPool {
             let string = Self::read_utf16_string(&mut string_reader)?;
             strings.push(string);
         }
+        reader.seek(chunk_start + header.chunk_size as usize)?;
         Ok(Self {
             header,
             strings,

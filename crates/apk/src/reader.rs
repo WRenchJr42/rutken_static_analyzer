@@ -90,8 +90,8 @@ impl ApkReader {
         println!("Manifest size: {} bytes", manifest_bytes.len());
         
         let manifest = ManifestParser::extract(&mut archive)?;
-        let header = AxmlParser::parse(&manifest)?;
-        println!("{:#?}", header);
+        let document = AxmlParser::parse(&manifest)?;
+        println!("{:#?}", document);
 
         let archive_info = Self::analyze_archive(&mut archive)?;
         Ok(ApkMetadata {
