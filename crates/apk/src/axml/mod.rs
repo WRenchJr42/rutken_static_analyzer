@@ -5,3 +5,5 @@ pub mod chunks;
 pub mod resource_map;
 pub mod constants;
 pub mod namespace;
+pub mod element;
+pub mod attribute;

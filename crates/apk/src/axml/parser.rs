@@ -5,6 +5,8 @@ use crate::axml::string_pool::StringPool;
 use crate::axml::resource_map::ResourceMap;
 use crate::axml::chunks::ChunkHeader;
 use crate::axml::namespace::StartNamespace;
+use crate::axml::element::StartElement;
+use crate::axml::constants::*;
 
 #[derive(Debug)]
 pub struct AxmlDocument {
@@ -28,10 +30,21 @@ impl AxmlParser {
     
     while reader.remaining() > 0 {
         let chunk = ChunkHeader::parse(&mut reader)?;
-        println!("{:#?}", chunk);
-        let namespace = StartNamespace::parse(&mut reader)?;
-        println!("{} -> {}",string_pool.strings[namespace.prefix as usize], string_pool.strings[namespace.uri as usize]);
-        break;
+        match chunk.chunk_type {
+            RES_XML_START_NAMESPACE => {
+                let ns = StartNamespace::parse(&mut reader)?;
+                println!("Namespace: {} -> {}", string_pool.strings[ns.prefix as usize], string_pool.strings[ns.uri as usize]);
+            }
+            RES_XML_START_ELEMENT => {
+                let element = StartElement::parse(&mut reader)?;
+                println!("{:#?}", element);
+                println!("Element: {}", string_pool.strings[element.name as usize]);
+            }
+            _ => {
+                println!("Unknown chunk: 0x{:04x}", chunk.chunk_type);
+                break;
+            }
+        }
     }
         
     Ok(AxmlDocument {
