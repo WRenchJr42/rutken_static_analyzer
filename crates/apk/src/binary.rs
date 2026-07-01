@@ -82,7 +82,14 @@ impl<'a> BinaryReader<'a> {
         self.offset += len;
         Ok(slice)
     }
-
+    
+    pub fn read_array<const N: usize>(&mut self) -> Result<[u8; N], ApkError> {
+        self.ensure_available(N)?;
+        let mut array = [0u8; N];
+        array.copy_from_slice(&self.bytes[self.offset..self.offset+N]);
+        self.offset += N;
+        Ok(array)
+    }
 }
 
 

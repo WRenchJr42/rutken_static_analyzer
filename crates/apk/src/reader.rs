@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use std::io::{BufReader, Read};
 use crate::manifest::ManifestParser;
 use crate::axml::parser::AxmlParser;
+use crate::dex::parser::DexParser;
 
 #[derive(Debug)]
 pub struct ApkMetadata {
@@ -86,10 +87,20 @@ impl ApkReader {
         let file = File::open(&path)?;
         let mut archive = ZipArchive::new(file)?;
 
-        let _manifest_bytes = ManifestParser::extract(&mut archive)?;
         let manifest = ManifestParser::extract(&mut archive)?;
         let document = AxmlParser::parse(&manifest)?;
         println!("Strings: {}, Resources: {}", document.string_pool.strings.len(), document.resource_map.resources.len());
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i)?;
+            let name = file.name().to_string();
+            println!("ENTRY: {}", name);
+            if name.starts_with("classes") && name.ends_with(".dex") {
+                let mut dex_bytes = Vec::new();
+                file.read_to_end(&mut dex_bytes)?;
+                let dex = DexParser::parse(&dex_bytes)?;
+                println!("{:#?}", dex);
+            }
+        }
         let archive_info = Self::analyze_archive(&mut archive)?;
         Ok(ApkMetadata {
             sha256: Self::compute_sha(&path)?,
