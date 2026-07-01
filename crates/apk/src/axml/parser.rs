@@ -9,6 +9,7 @@ use crate::axml::element::StartElement;
 use crate::axml::constants::*;
 use crate::axml::resolve::resolve_attribute;
 use crate::axml::end_element::EndElement;
+use crate::axml::end_namespace::EndNamespace;
 
 #[derive(Debug)]
 pub struct AxmlDocument {
@@ -53,6 +54,11 @@ impl AxmlParser {
             RES_XML_END_ELEMENT => {
             let end = EndElement::parse(&mut reader)?;
             println!("End: {}", string_pool.strings[end.name as usize]);
+            }
+
+            RES_XML_END_NAMESPACE => {
+            let ns = EndNamespace::parse(&mut reader)?;
+            println!("End: {}", string_pool.strings[ns.prefix as usize]);
             }
 
             _ => {
