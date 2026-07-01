@@ -10,12 +10,14 @@ use crate::axml::constants::*;
 use crate::axml::resolve::resolve_attribute;
 use crate::axml::end_element::EndElement;
 use crate::axml::end_namespace::EndNamespace;
+use crate::axml::node::XmlNode;
 
 #[derive(Debug)]
 pub struct AxmlDocument {
     pub header: AxmlHeader,
     pub string_pool: StringPool,
     pub resource_map: ResourceMap,
+    pub root: Option<XmlNode>,
 }
 
 pub struct AxmlParser;
@@ -30,7 +32,9 @@ impl AxmlParser {
     let header = AxmlHeader::parse(&mut reader)?;
     let string_pool = StringPool::parse(&mut reader)?;
     let resource_map = ResourceMap::parse(&mut reader)?;
-    
+    let mut stack: Vec<XmlNode> = Vec::new();
+    let mut root: Option<XmlNode> = None;
+
     while reader.remaining() > 0 {
         let chunk = ChunkHeader::parse(&mut reader)?;
         match chunk.chunk_type {
@@ -40,20 +44,21 @@ impl AxmlParser {
             }
             RES_XML_START_ELEMENT => {
                 let element = StartElement::parse(&mut reader)?;
-                println!("{:#?}", element);
-                println!("Element: {}", string_pool.strings[element.name as usize]);
+                let mut attributes = Vec::new();
                 for attribute in &element.attributes {
-                    let resolved = resolve_attribute(attribute, &string_pool);
-                    if let Some(ns) = resolved.namespace {
-                        println!("{}:{} = {}", ns, resolved.name, resolved.value);
-                    } else {
-                        println!("{} = {}", resolved.name, resolved.value);
-                    }
+                    attributes.push(resolve_attribute(attribute, &string_pool));   
                 }
+                let node = XmlNode::new(string_pool.strings[element.name as usize].clone(), attributes);
+                stack.push(node);
             }
             RES_XML_END_ELEMENT => {
-            let end = EndElement::parse(&mut reader)?;
-            println!("End: {}", string_pool.strings[end.name as usize]);
+                let _end = EndElement::parse(&mut reader)?;
+                let node = stack.pop().unwrap();
+                if let Some(parent) = stack.last_mut() {
+                    parent.children.push(node);
+                } else {
+                    root = Some(node);
+                }
             }
 
             RES_XML_END_NAMESPACE => {
@@ -67,11 +72,12 @@ impl AxmlParser {
             }
         }
     }
-        
+    println!("{:#?}", root);    
     Ok(AxmlDocument {
         header,
         string_pool,
         resource_map,
+        root,
     })
     }
 }

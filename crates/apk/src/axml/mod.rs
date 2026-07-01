@@ -10,3 +10,4 @@ pub mod attribute;
 pub mod resolve;
 pub mod end_element;
 pub mod end_namespace;
+pub mod node;

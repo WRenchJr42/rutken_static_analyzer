@@ -1,6 +1,7 @@
 use crate::axml::attribute::Attribute;
 use crate::axml::string_pool::StringPool;
 
+#[derive(Debug, Clone)]
 pub struct ResolvedAttribute {
     pub namespace: Option<String>,
     pub name: String,
