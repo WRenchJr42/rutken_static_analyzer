@@ -8,3 +8,4 @@ pub mod namespace;
 pub mod element;
 pub mod attribute;
 pub mod resolve;
+pub mod end_element;

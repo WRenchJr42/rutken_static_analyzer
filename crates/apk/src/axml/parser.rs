@@ -8,6 +8,7 @@ use crate::axml::namespace::StartNamespace;
 use crate::axml::element::StartElement;
 use crate::axml::constants::*;
 use crate::axml::resolve::resolve_attribute;
+use crate::axml::end_element::EndElement;
 
 #[derive(Debug)]
 pub struct AxmlDocument {
@@ -49,6 +50,11 @@ impl AxmlParser {
                     }
                 }
             }
+            RES_XML_END_ELEMENT => {
+            let end = EndElement::parse(&mut reader)?;
+            println!("End: {}", string_pool.strings[end.name as usize]);
+            }
+
             _ => {
                 println!("Unknown chunk: 0x{:04x}", chunk.chunk_type);
                 break;
