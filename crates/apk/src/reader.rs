@@ -97,8 +97,11 @@ impl ApkReader {
             if name.starts_with("classes") && name.ends_with(".dex") {
                 let mut dex_bytes = Vec::new();
                 file.read_to_end(&mut dex_bytes)?;
-                let _dex = DexParser::parse(&dex_bytes)?;
+                let dex = DexParser::parse(&dex_bytes)?;
                // println!("{:#?}", dex);
+               for t in dex.type_ids.types.iter().take(20) {
+                    println!("{}", dex.strings.strings[t.descriptor_idx as usize]);
+                }
             }
         }
         let archive_info = Self::analyze_archive(&mut archive)?;
