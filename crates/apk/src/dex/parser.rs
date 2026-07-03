@@ -2,11 +2,13 @@ use crate::binary::BinaryReader;
 use crate::dex::header::DexHeader;
 use crate::errors::ApkError;
 use crate::dex::string_id::StringIds;
+use crate::dex::strings::DexStrings;
 
 #[derive(Debug)]
 pub struct DexDocument {
     pub header: DexHeader,
     pub string_ids: StringIds,
+    pub strings: DexStrings,
 }
 
 pub struct DexParser;
@@ -25,10 +27,12 @@ impl DexParser {
         header.string_ids_off
         );
         let string_ids = StringIds::parse(&mut reader, header.string_ids_size, header.string_ids_off)?;
+        let strings = DexStrings::parse(&mut reader, &string_ids)?;
         println!("Read {} string IDs", string_ids.strings.len());
         Ok(DexDocument{
             header,
             string_ids,
+            strings,
         })
     }
 }

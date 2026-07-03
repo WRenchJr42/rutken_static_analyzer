@@ -90,6 +90,28 @@ impl<'a> BinaryReader<'a> {
         self.offset += N;
         Ok(array)
     }
+
+    pub fn read_uleb128(&mut self) -> Result<u32, ApkError> {
+        let mut result = 0u32;
+        let mut shift = 0;
+
+        loop {
+            let byte = self.read_u8()?;
+            result |= ((byte & 0x7f) as u32) << shift;
+            if byte & 0x80 == 0 {
+                break;
+            }
+            shift += 7;
+        }
+        Ok(result)
+    }
+    
+    pub fn read_cstring(&mut self) -> Result<String, ApkError> {
+        let start = self.offset;
+        while self.read_u8()? != 0 {}
+        let end = self.offset - 1;
+        Ok(String::from_utf8_lossy(&self.bytes[start..end]).to_string())
+    }
 }
 
 

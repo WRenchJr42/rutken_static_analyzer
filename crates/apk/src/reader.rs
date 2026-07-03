@@ -98,7 +98,7 @@ impl ApkReader {
                 let mut dex_bytes = Vec::new();
                 file.read_to_end(&mut dex_bytes)?;
                 let dex = DexParser::parse(&dex_bytes)?;
-                println!("{:#?}", dex);
+               // println!("{:#?}", dex);
             }
         }
         let archive_info = Self::analyze_archive(&mut archive)?;
