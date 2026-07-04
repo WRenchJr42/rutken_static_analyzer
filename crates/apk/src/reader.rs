@@ -98,9 +98,19 @@ impl ApkReader {
                 let mut dex_bytes = Vec::new();
                 file.read_to_end(&mut dex_bytes)?;
                 let dex = DexParser::parse(&dex_bytes)?;
-               // println!("{:#?}", dex);
-               for t in dex.type_ids.types.iter().take(20) {
-                    println!("{}", dex.strings.strings[t.descriptor_idx as usize]);
+                println!("Strings: {}", dex.strings.strings.len());
+                println!("Types: {}", dex.type_ids.types.len());
+                println!("Protos: {}", dex.proto_ids.protos.len());
+
+                for proto in dex.proto_ids.protos.iter().take(10) {
+                    println!(
+                        "{} -> {}",
+                        dex.strings.strings[proto.shorty_idx as usize],
+                        dex.strings.strings[
+                            dex.type_ids.types[proto.return_type_idx as usize]
+                                .descriptor_idx as usize
+                        ]
+                    );
                 }
             }
         }

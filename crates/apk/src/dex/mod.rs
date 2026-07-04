@@ -5,3 +5,4 @@ pub mod types;
 pub mod string_id;
 pub mod strings;
 pub mod type_id;
+pub mod proto_id;

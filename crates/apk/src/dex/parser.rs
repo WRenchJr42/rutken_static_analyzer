@@ -4,6 +4,7 @@ use crate::errors::ApkError;
 use crate::dex::string_id::StringIds;
 use crate::dex::strings::DexStrings;
 use crate::dex::type_id::TypeIds;
+use crate::dex::proto_id::ProtoIds;
 
 #[derive(Debug)]
 pub struct DexDocument {
@@ -11,6 +12,7 @@ pub struct DexDocument {
     pub string_ids: StringIds,
     pub strings: DexStrings,
     pub type_ids: TypeIds,
+    pub proto_ids: ProtoIds,
 }
 
 pub struct DexParser;
@@ -21,6 +23,7 @@ impl DexParser {
         let mut reader = BinaryReader::new(bytes);
         let header = DexHeader::parse(&mut reader)?;
         let type_ids = TypeIds::parse(&mut reader, header.type_ids_size, header.type_ids_off)?;
+        let proto_ids = ProtoIds::parse(&mut reader, header.proto_ids_size, header.proto_ids_off)?;
         println!("{:#?}", header);
         println!("string_ids_size={}, string_ids_off={}", header.string_ids_size, header.string_ids_off);
         let string_ids = StringIds::parse(&mut reader, header.string_ids_size, header.string_ids_off)?;
@@ -31,6 +34,7 @@ impl DexParser {
             string_ids,
             strings,
             type_ids,
+            proto_ids,
         })
     }
 }
