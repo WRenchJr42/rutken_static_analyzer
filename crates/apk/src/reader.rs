@@ -93,7 +93,6 @@ impl ApkReader {
         for i in 0..archive.len() {
             let mut file = archive.by_index(i)?;
             let name = file.name().to_string();
-            println!("ENTRY: {}", name);
             if name.starts_with("classes") && name.ends_with(".dex") {
                 let mut dex_bytes = Vec::new();
                 file.read_to_end(&mut dex_bytes)?;
