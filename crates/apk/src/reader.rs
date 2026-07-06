@@ -101,14 +101,17 @@ impl ApkReader {
                 println!("Types: {}", dex.type_ids.types.len());
                 println!("Protos: {}", dex.proto_ids.protos.len());
 
-                for proto in dex.proto_ids.protos.iter().take(10) {
+                println!("Methods: {}", dex.method_ids.methods.len());
+
+                for method in dex.method_ids.methods.iter().take(20) {
+                    let class = &dex.type_ids.types[method.class_idx as usize];
+                    let class_name = &dex.strings.strings[class.descriptor_idx as usize];
+                    let method_name = &dex.strings.strings[method.name_idx as usize];
+
                     println!(
                         "{} -> {}",
-                        dex.strings.strings[proto.shorty_idx as usize],
-                        dex.strings.strings[
-                            dex.type_ids.types[proto.return_type_idx as usize]
-                                .descriptor_idx as usize
-                        ]
+                        class_name,
+                        method_name
                     );
                 }
             }
