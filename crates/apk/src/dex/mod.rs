@@ -7,3 +7,4 @@ pub mod strings;
 pub mod type_id;
 pub mod proto_id;
 pub mod method_id;
+pub mod field_id;

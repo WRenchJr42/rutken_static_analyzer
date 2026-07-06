@@ -111,7 +111,22 @@ impl ApkReader {
                     println!(
                         "{} -> {}",
                         class_name,
-                        method_name
+                        method_name,
+                    );
+                }
+
+                println!("Fields: {}", dex.field_ids.fields.len());
+                for field in dex.field_ids.fields.iter().take(20) {
+                    let class = &dex.type_ids.types[field.class_idx as usize];
+                    let class_name = &dex.strings.strings[class.descriptor_idx as usize];
+                    let field_name = &dex.strings.strings[field.name_idx as usize];
+                    let field_type = &dex.type_ids.types[field.type_idx as usize];
+                    let type_name = &dex.strings.strings[field_type.descriptor_idx as usize];
+                    println!(
+                        "{} -> {} : {}",
+                        class_name,
+                        field_name,
+                        type_name
                     );
                 }
             }
