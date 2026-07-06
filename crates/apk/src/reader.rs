@@ -11,6 +11,7 @@ use crate::dex::parser::DexParser;
 use crate::dex::class_data::ClassData;
 use crate::binary::BinaryReader;
 use crate::dex::code_item::CodeItem;
+use crate::dex::disasm::decode_instruction;
 
 #[derive(Debug)]
 pub struct ApkMetadata {
@@ -149,14 +150,20 @@ impl ApkReader {
                             println!("code_off: {}", m.code_off);
                             if m.code_off != 0 {
                                 let code = CodeItem::parse(&mut BinaryReader::new(&dex_bytes), m.code_off)?;
-                                println!("{:#?}", code);
+                                let mut pc = 0;
+                                while pc < code.instructions.len() {
+                                    pc += decode_instruction(&code.instructions, pc, &dex);
+                                }
                             }
                         }
                         for m in data.virtual_methods.iter() {
                             println!("code_off: {}", m.code_off);
                             if m.code_off != 0 {
                                 let code = CodeItem::parse(&mut BinaryReader::new(&dex_bytes), m.code_off)?;
-                                println!("{:#?}", code);
+                                let mut pc = 0;
+                                while pc < code.instructions.len() {
+                                    pc += decode_instruction(&code.instructions, pc, &dex);
+                                }
                             }
                         }
                     }
