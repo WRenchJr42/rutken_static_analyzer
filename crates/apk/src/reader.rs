@@ -8,6 +8,8 @@ use std::io::{BufReader, Read};
 use crate::manifest::ManifestParser;
 use crate::axml::parser::AxmlParser;
 use crate::dex::parser::DexParser;
+use crate::dex::class_data::ClassData;
+use crate::binary::BinaryReader;
 
 #[derive(Debug)]
 pub struct ApkMetadata {
@@ -134,10 +136,21 @@ impl ApkReader {
                 for class in dex.class_defs.classes.iter().take(20) {
                     let class_type = &dex.type_ids.types[class.class_idx as usize];
                     let class_name = &dex.strings.strings[class_type.descriptor_idx as usize];
-                    println!(
-                        "CLASS: {}",
-                        class_name
-                    );
+                    println!("CLASS: {}", class_name);
+                    if class.class_data_off != 0 {
+                        let data = ClassData::parse(&mut BinaryReader::new(&dex_bytes), class.class_data_off)?;
+                        println!(
+                            "Direct: {}, Virtual: {}",
+                            data.direct_methods.len(),
+                            data.virtual_methods.len()
+                        );
+                        for m in data.direct_methods.iter() {
+                            println!("code_off: {}", m.code_off);
+                        }
+                        for m in data.virtual_methods.iter() {
+                            println!("code_off: {}", m.code_off);
+                        }
+                    }
                 }
             }
         }
