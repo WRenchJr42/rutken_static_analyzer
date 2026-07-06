@@ -129,6 +129,16 @@ impl ApkReader {
                         type_name
                     );
                 }
+
+                println!("Classes: {}", dex.class_defs.classes.len());
+                for class in dex.class_defs.classes.iter().take(20) {
+                    let class_type = &dex.type_ids.types[class.class_idx as usize];
+                    let class_name = &dex.strings.strings[class_type.descriptor_idx as usize];
+                    println!(
+                        "CLASS: {}",
+                        class_name
+                    );
+                }
             }
         }
         let archive_info = Self::analyze_archive(&mut archive)?;

@@ -7,6 +7,7 @@ use crate::dex::type_id::TypeIds;
 use crate::dex::proto_id::ProtoIds;
 use crate::dex::method_id::MethodIds;
 use crate::dex::field_id::FieldIds;
+use crate::dex::class_def::ClassDefs;
 
 #[derive(Debug)]
 pub struct DexDocument {
@@ -17,6 +18,7 @@ pub struct DexDocument {
     pub proto_ids: ProtoIds,
     pub method_ids: MethodIds,
     pub field_ids: FieldIds,
+    pub class_defs: ClassDefs,
 }
 
 pub struct DexParser;
@@ -30,6 +32,7 @@ impl DexParser {
         let proto_ids = ProtoIds::parse(&mut reader, header.proto_ids_size, header.proto_ids_off)?;
         let method_ids = MethodIds::parse(&mut reader, header.method_ids_size, header.method_ids_off)?;
         let field_ids = FieldIds::parse(&mut reader, header.field_ids_size, header.field_ids_off)?;
+        let class_defs = ClassDefs::parse(&mut reader, header.class_defs_size, header.class_defs_off)?;
         println!("{:#?}", header);
         println!("string_ids_size={}, string_ids_off={}", header.string_ids_size, header.string_ids_off);
         let string_ids = StringIds::parse(&mut reader, header.string_ids_size, header.string_ids_off)?;
@@ -43,6 +46,7 @@ impl DexParser {
             proto_ids,
             method_ids,
             field_ids,
+            class_defs,
         })
     }
 }
