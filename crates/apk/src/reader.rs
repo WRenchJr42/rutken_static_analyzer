@@ -10,6 +10,7 @@ use crate::axml::parser::AxmlParser;
 use crate::dex::parser::DexParser;
 use crate::dex::class_data::ClassData;
 use crate::binary::BinaryReader;
+use crate::dex::code_item::CodeItem;
 
 #[derive(Debug)]
 pub struct ApkMetadata {
@@ -146,9 +147,17 @@ impl ApkReader {
                         );
                         for m in data.direct_methods.iter() {
                             println!("code_off: {}", m.code_off);
+                            if m.code_off != 0 {
+                                let code = CodeItem::parse(&mut BinaryReader::new(&dex_bytes), m.code_off)?;
+                                println!("{:#?}", code);
+                            }
                         }
                         for m in data.virtual_methods.iter() {
                             println!("code_off: {}", m.code_off);
+                            if m.code_off != 0 {
+                                let code = CodeItem::parse(&mut BinaryReader::new(&dex_bytes), m.code_off)?;
+                                println!("{:#?}", code);
+                            }
                         }
                     }
                 }
