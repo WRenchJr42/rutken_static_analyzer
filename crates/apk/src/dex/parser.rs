@@ -25,7 +25,6 @@ pub struct DexParser;
 
 impl DexParser {
     pub fn parse(bytes: &[u8]) -> Result<DexDocument, ApkError> {
-        println!("DEX bytes: {}", bytes.len());
         let mut reader = BinaryReader::new(bytes);
         let header = DexHeader::parse(&mut reader)?;
         let type_ids = TypeIds::parse(&mut reader, header.type_ids_size, header.type_ids_off)?;
@@ -33,11 +32,8 @@ impl DexParser {
         let method_ids = MethodIds::parse(&mut reader, header.method_ids_size, header.method_ids_off)?;
         let field_ids = FieldIds::parse(&mut reader, header.field_ids_size, header.field_ids_off)?;
         let class_defs = ClassDefs::parse(&mut reader, header.class_defs_size, header.class_defs_off)?;
-        println!("{:#?}", header);
-        println!("string_ids_size={}, string_ids_off={}", header.string_ids_size, header.string_ids_off);
         let string_ids = StringIds::parse(&mut reader, header.string_ids_size, header.string_ids_off)?;
         let strings = DexStrings::parse(&mut reader, &string_ids)?;
-        println!("Read {} string IDs", string_ids.strings.len());
         Ok(DexDocument{
             header,
             string_ids,

@@ -8,3 +8,9 @@ repository.workspace = true
 
 [dependencies]
 apk = { path = "../crates/apk" }
+clap = { version = "4", features = ["derive"] }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "rutken"
+path = "src/main.rs"

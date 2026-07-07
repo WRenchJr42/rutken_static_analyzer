@@ -9,7 +9,7 @@ pub struct EncodedField {
 
 #[derive(Debug, Clone)]
 pub struct EncodedMethod {
-    pub method_idx_diff: u32,
+    pub method_idx: u32,
     pub access_flags: u32,
     pub code_off: u32,
 }
@@ -52,10 +52,12 @@ impl ClassData {
 
         let read_methods = |reader: &mut BinaryReader, count: u32| -> Result<Vec<EncodedMethod>, ApkError> {
             let mut methods = Vec::new();
+            let mut method_idx = 0u32;
             for _ in 0..count {
+                method_idx += reader.read_uleb128()?;
                 methods.push(
                     EncodedMethod {
-                        method_idx_diff: reader.read_uleb128()?,
+                        method_idx,
                         access_flags: reader.read_uleb128()?,
                         code_off: reader.read_uleb128()?,
                     }

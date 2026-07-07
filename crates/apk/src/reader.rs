@@ -1,67 +1,81 @@
-use std::path::Path;
 use std::fs;
 use std::fs::File;
-use crate::errors::ApkError;
-use zip::ZipArchive;
-use sha2::{Digest, Sha256};
-use std::io::{BufReader, Read};
-use crate::manifest::ManifestParser;
-use crate::axml::parser::AxmlParser;
-use crate::dex::parser::DexParser;
-use crate::dex::class_data::ClassData;
-use crate::binary::BinaryReader;
-use crate::dex::code_item::CodeItem;
-use crate::dex::disasm::decode_instruction;
+use std::io::{BufReader, Read, Seek};
+use std::path::Path;
 
-#[derive(Debug)]
-pub struct ApkMetadata {
-    ///SHA256 hash of APK 
-    pub sha256: String, 
-    ///Size of APK 
-    pub file_size: u64,    
-    ///Number of DEX files 
-    pub dex_count: usize,
-    ///Native architectures under lib/
-    pub architectures: Vec<String>,
-    ///Number of files inside APK 
+use sha2::{Digest, Sha256};
+use zip::ZipArchive;
+
+use crate::errors::ApkError;
+use crate::manifest::ManifestParser;
+
+#[derive(Debug, Clone)]
+pub struct ApkDexFile {
+    pub name: String,
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApkContainer {
+    pub sha256: String,
+    pub file_size: u64,
     pub entries: usize,
+    pub dex_count: usize,
+    pub architectures: Vec<String>,
+    pub manifest: Vec<u8>,
+    pub dex_files: Vec<ApkDexFile>,
 }
 
 struct ArchiveInfo {
-    ///Number of files in the APK 
     entries: usize,
-    ///Number of DEX files 
     dex_count: usize,
-    ///Native architectures
     architectures: Vec<String>,
 }
 
-//Read APK Files
-pub struct ApkReader; 
+pub(crate) fn should_skip_class(name: &str) -> bool {
+    name.starts_with("Ldalvik/")
+        || name.starts_with("Landroid/")
+        || name.starts_with("Landroidx/")
+        || name.starts_with("Lkotlin/")
+        || name.starts_with("Lkotlinx/")
+        || name.starts_with("Lcom/google/")
+        || name.starts_with("Lcom/android/tools/r8/")
+        || name.starts_with("Lorg/intellij/")
+        || name.starts_with("Lorg/jetbrains/")
+        || name.starts_with("Lorg/jspecify/")
+        || name.starts_with("L_COROUTINE/")
+        || name.contains("/R$")
+        || name.ends_with("/R;")
+}
+
+pub struct ApkReader;
+
 impl ApkReader {
     fn get_file_size(path: impl AsRef<Path>) -> Result<u64, ApkError> {
-        let metadata = fs::metadata(path)?;
-        Ok(metadata.len())
+        Ok(fs::metadata(path)?.len())
     }
-    
+
     fn compute_sha(path: impl AsRef<Path>) -> Result<String, ApkError> {
-        let file = File::open(&path)?;
+        let file = File::open(path)?;
         let mut reader = BufReader::new(file);
         let mut hasher = Sha256::new();
         let mut buffer = [0u8; 8192];
 
-        loop{
-            let bytes_read = reader.read(&mut buffer)?;
-            if bytes_read == 0{
+        loop {
+            let read = reader.read(&mut buffer)?;
+            if read == 0 {
                 break;
             }
-            hasher.update(&buffer[..bytes_read]);
+            hasher.update(&buffer[..read]);
         }
-        let hash = hasher.finalize();
-        Ok(format!("{:x}", hash))
+
+        Ok(format!("{:x}", hasher.finalize()))
     }
 
-    fn analyze_archive<R: Read + std::io::Seek>(archive: &mut ZipArchive<R>) -> Result<ArchiveInfo, ApkError> {
+    fn analyze_archive<R>(archive: &mut ZipArchive<R>) -> Result<ArchiveInfo, ApkError>
+    where
+        R: Read + Seek,
+    {
         let mut info = ArchiveInfo {
             entries: archive.len(),
             dex_count: 0,
@@ -71,112 +85,107 @@ impl ApkReader {
         for i in 0..archive.len() {
             let file = archive.by_index(i)?;
             let name = file.name();
+
             if name.starts_with("classes") && name.ends_with(".dex") {
                 info.dex_count += 1;
             }
+
             if name.ends_with(".so") {
                 if let Some(rest) = name.strip_prefix("lib/") {
                     if let Some(arch) = rest.split('/').next() {
-                        if !info.architectures.iter().any(|a| a == arch) {
+                        if !info.architectures.iter().any(|existing| existing == arch) {
                             info.architectures.push(arch.to_string());
                         }
                     }
                 }
             }
         }
+
         Ok(info)
     }
 
-    pub fn read(path: impl AsRef<Path>) -> Result<ApkMetadata, ApkError> {
+    pub fn read(path: impl AsRef<Path>) -> Result<ApkContainer, ApkError> {
         let file = File::open(&path)?;
         let mut archive = ZipArchive::new(file)?;
 
         let manifest = ManifestParser::extract(&mut archive)?;
-        let document = AxmlParser::parse(&manifest)?;
-        println!("Strings: {}, Resources: {}", document.string_pool.strings.len(), document.resource_map.resources.len());
+        let archive_info = Self::analyze_archive(&mut archive)?;
+
+        let mut dex_files = Vec::new();
+
         for i in 0..archive.len() {
             let mut file = archive.by_index(i)?;
             let name = file.name().to_string();
-            if name.starts_with("classes") && name.ends_with(".dex") {
-                let mut dex_bytes = Vec::new();
-                file.read_to_end(&mut dex_bytes)?;
-                let dex = DexParser::parse(&dex_bytes)?;
-                println!("Strings: {}", dex.strings.strings.len());
-                println!("Types: {}", dex.type_ids.types.len());
-                println!("Protos: {}", dex.proto_ids.protos.len());
 
-                println!("Methods: {}", dex.method_ids.methods.len());
-
-                for method in dex.method_ids.methods.iter().take(20) {
-                    let class = &dex.type_ids.types[method.class_idx as usize];
-                    let class_name = &dex.strings.strings[class.descriptor_idx as usize];
-                    let method_name = &dex.strings.strings[method.name_idx as usize];
-
-                    println!(
-                        "{} -> {}",
-                        class_name,
-                        method_name,
-                    );
-                }
-
-                println!("Fields: {}", dex.field_ids.fields.len());
-                for field in dex.field_ids.fields.iter().take(20) {
-                    let class = &dex.type_ids.types[field.class_idx as usize];
-                    let class_name = &dex.strings.strings[class.descriptor_idx as usize];
-                    let field_name = &dex.strings.strings[field.name_idx as usize];
-                    let field_type = &dex.type_ids.types[field.type_idx as usize];
-                    let type_name = &dex.strings.strings[field_type.descriptor_idx as usize];
-                    println!(
-                        "{} -> {} : {}",
-                        class_name,
-                        field_name,
-                        type_name
-                    );
-                }
-
-                println!("Classes: {}", dex.class_defs.classes.len());
-                for class in dex.class_defs.classes.iter().take(20) {
-                    let class_type = &dex.type_ids.types[class.class_idx as usize];
-                    let class_name = &dex.strings.strings[class_type.descriptor_idx as usize];
-                    println!("CLASS: {}", class_name);
-                    if class.class_data_off != 0 {
-                        let data = ClassData::parse(&mut BinaryReader::new(&dex_bytes), class.class_data_off)?;
-                        println!(
-                            "Direct: {}, Virtual: {}",
-                            data.direct_methods.len(),
-                            data.virtual_methods.len()
-                        );
-                        for m in data.direct_methods.iter() {
-                            println!("code_off: {}", m.code_off);
-                            if m.code_off != 0 {
-                                let code = CodeItem::parse(&mut BinaryReader::new(&dex_bytes), m.code_off)?;
-                                let mut pc = 0;
-                                while pc < code.instructions.len() {
-                                    pc += decode_instruction(&code.instructions, pc, &dex);
-                                }
-                            }
-                        }
-                        for m in data.virtual_methods.iter() {
-                            println!("code_off: {}", m.code_off);
-                            if m.code_off != 0 {
-                                let code = CodeItem::parse(&mut BinaryReader::new(&dex_bytes), m.code_off)?;
-                                let mut pc = 0;
-                                while pc < code.instructions.len() {
-                                    pc += decode_instruction(&code.instructions, pc, &dex);
-                                }
-                            }
-                        }
-                    }
-                }
+            if !name.starts_with("classes") || !name.ends_with(".dex") {
+                continue;
             }
+
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes)?;
+
+            dex_files.push(ApkDexFile { name, bytes });
         }
-        let archive_info = Self::analyze_archive(&mut archive)?;
-        Ok(ApkMetadata {
+
+        dex_files.sort_by_key(|dex_file| dex_sort_key(&dex_file.name));
+
+        Ok(ApkContainer {
             sha256: Self::compute_sha(&path)?,
             file_size: Self::get_file_size(&path)?,
             entries: archive_info.entries,
             dex_count: archive_info.dex_count,
             architectures: archive_info.architectures,
+            manifest,
+            dex_files,
         })
+    }
+}
+
+fn dex_sort_key(name: &str) -> (u8, usize, String) {
+    if !name.starts_with("classes") || !name.ends_with(".dex") {
+        return (1, usize::MAX, name.to_string());
+    }
+
+    let middle = name
+        .trim_start_matches("classes")
+        .trim_end_matches(".dex");
+
+    let index = if middle.is_empty() {
+        1
+    } else {
+        middle.parse::<usize>().unwrap_or(usize::MAX)
+    };
+
+    (0, index, name.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Write};
+    use zip::write::SimpleFileOptions;
+    use zip::ZipWriter;
+
+    #[test]
+    fn analyze_archive_detects_architectures() {
+        let mut bytes = Cursor::new(Vec::new());
+        {
+            let mut writer = ZipWriter::new(&mut bytes);
+            let options = SimpleFileOptions::default();
+            writer.start_file("classes.dex", options).expect("start classes.dex");
+            writer.write_all(&[]).expect("write classes.dex");
+            writer.start_file("lib/arm64-v8a/libfoo.so", options).expect("start libfoo");
+            writer.write_all(&[]).expect("write libfoo");
+            writer.start_file("lib/armeabi-v7a/libbar.so", options).expect("start libbar");
+            writer.write_all(&[]).expect("write libbar");
+            writer.finish().expect("finish zip");
+        }
+
+        bytes.set_position(0);
+        let mut archive = zip::ZipArchive::new(bytes).expect("zip should open");
+        let info = ApkReader::analyze_archive(&mut archive).expect("archive analysis should work");
+
+        assert_eq!(info.dex_count, 1);
+        assert_eq!(info.architectures, vec!["arm64-v8a".to_string(), "armeabi-v7a".to_string()]);
     }
 }

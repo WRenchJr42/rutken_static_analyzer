@@ -39,8 +39,7 @@ impl AxmlParser {
         let chunk = ChunkHeader::parse(&mut reader)?;
         match chunk.chunk_type {
             RES_XML_START_NAMESPACE => {
-                let ns = StartNamespace::parse(&mut reader)?;
-                println!("Namespace: {} -> {}", string_pool.strings[ns.prefix as usize], string_pool.strings[ns.uri as usize]);
+                let _ns = StartNamespace::parse(&mut reader)?;
             }
             RES_XML_START_ELEMENT => {
                 let element = StartElement::parse(&mut reader)?;
@@ -62,17 +61,14 @@ impl AxmlParser {
             }
 
             RES_XML_END_NAMESPACE => {
-            let ns = EndNamespace::parse(&mut reader)?;
-            println!("End: {}", string_pool.strings[ns.prefix as usize]);
+            let _ns = EndNamespace::parse(&mut reader)?;
             }
 
             _ => {
-                println!("Unknown chunk: 0x{:04x}", chunk.chunk_type);
                 break;
             }
         }
     }
-   // println!("{:#?}", root);    
     Ok(AxmlDocument {
         header,
         string_pool,

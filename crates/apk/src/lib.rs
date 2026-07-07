@@ -4,3 +4,4 @@ pub mod manifest;
 pub mod axml;
 pub mod binary;
 pub mod dex;
+pub mod commands;

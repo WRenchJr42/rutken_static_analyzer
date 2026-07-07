@@ -1,189 +1,363 @@
 use crate::dex::parser::DexDocument;
+use crate::dex::opcode::opcode_width;
+use crate::dex::instruction::{
+    Instruction,
+    InvokeKind,
+    BranchKind,
+};
 
-pub fn decode_instruction(insns: &[u16], pc: usize, dex: &DexDocument) -> usize {
+pub fn decode_instruction(insns: &[u16], pc: usize, dex: &DexDocument) -> (Instruction, usize) {
     let ins = insns[pc];
+    match ins {
+        0x0100 | 0x0200 | 0x0300 => {
+            return (
+                Instruction::Payload,
+                insns.len() - pc
+            );
+        }
+
+        _ => {}
+    }
+
     let opcode = (ins & 0xff) as u8;
-    //let register = (ins >> 8) as u8;
     match opcode {
-        0x1a => {
-            let reg = (ins >> 8) as u8;
-            let idx = insns[pc + 1] as usize;
-            println!("const-string v{}, string@{} \"{}\"", reg, idx, dex.strings.strings[idx]);
-            2
-        }
 
-        0x71 => {
-            let method_idx = insns[pc+1] as usize;
-            let regs = decode_35c_registers(ins, insns[pc + 2]);
-            println!("invoke-static {:?}, {}", regs, resolve_method(method_idx,dex));
-            3
-        }
-
-        0x6e => {
-            let method_idx = insns[pc+1] as usize;
-            println!("{:04x} invoke-virtual {}", ins, resolve_method(method_idx,dex));
-            3
-        }
-
-        0x38 => {
-            println!("{:04x} if-eqz", ins);
-            2
-        }
-        0x10 => {
-            println!("{:04x} const/16", ins);
-            2
-        }
-
-        0x11 => {
-            println!("{:04x} const/high16", ins);
-            2
-        }
-
-        0x1f => {
-            let reg = (ins >> 8) as u8;
-            let type_idx = insns[pc + 1] as usize;
-            let typ = &dex.type_ids.types[type_idx];
-            println!("check-cast v{}, {}", reg, dex.strings.strings[typ.descriptor_idx as usize]);
-            2
-        }
-
-        0x20 => {
-            println!("{:04x} instance-of", ins);
-            2
-        }
-
-        0x21 => {
-            println!("{:04x} array-length", ins);
+        0x00 => (
+            Instruction::Nop,
             1
-        }
-
-        0x28 => {
-            println!("{:04x} goto", ins);
-            1
-        }
-
-        0x2b => {
-            println!("{:04x} packed-switch", ins);
-            3
-        }
-
-        0x54 => {
-            println!("{:04x} iget-object", ins);
-            2
-        }
-
-        0x60 => {
-            let field_idx = insns[pc + 1] as usize;
-            println!("{:04x} sget {}", ins, resolve_field(field_idx, dex));
-            2
-        }
-
-        0x62 => {
-            println!("{:04x} sget-object", ins);
-            2
-        }
-
-        0x69 => {
-            println!("{:04x} sput-object", ins);
-            2
-        }
-
-        0x70 => {
-            let method_idx = insns[pc+1] as usize;
-            println!("{:04x} invoke-direct {}", ins, resolve_method(method_idx,dex));
-            3
-        }
-
-        0x72 => {
-            let method_idx = insns[pc+1] as usize;
-            println!("invoke-interface {}", resolve_method(method_idx,dex));
-            3
-        }
-        
-        0x27 => {
-            println!("throw");
-            1
-        }
-
-        0x0e => {
-            println!("return-void");
-            1
-        }
-
-        0x0f => {
-            println!("return");
-            1
-        }
-
-        0x12 => {
-            println!("const/4");
-            1
-        }
-    
-        0x5b => {
-            println!("{:04x} iput-object", ins);
-            2
-        }
-
-        0x6f => {
-            let method_idx = insns[pc + 1] as usize;
-            println!("{:04x} invoke-super {}", ins, resolve_method(method_idx, dex));
-            3
-        }
-
-        0x22 => {
-            let type_idx = insns[pc + 1] as usize;
-            let typ = &dex.type_ids.types[type_idx];
-            println!("{:04x} new-instance {}", ins, dex.strings.strings[typ.descriptor_idx as usize]);
-            2
-        }
+        ),
 
         0x0c => {
             let reg = (ins >> 8) as u8;
-
-            println!("move-result-object v{}", reg);
-            1
+            (
+                Instruction::MoveResult {
+                    register: reg
+                },
+                1
+            )
         }
 
-        _ => {
-            println!("{:04x} unknown", ins);
+        0x0e | 0x0f | 0x10 => (
+            Instruction::Return,
             1
+        ),
+
+        0x12 => {
+            let reg = ((ins >> 8) & 0xf) as u8;
+            let value = ((ins >> 12)&0xf) as i32;
+            (
+                Instruction::Const {
+                    register: reg,
+                    value
+                },
+                1
+            )
+        }
+
+        0x13 => {
+            let reg = (ins >> 8) as u8;
+            let value = get(insns, pc + 1) as i16 as i32;
+            (
+                Instruction::Const {
+                    register: reg,
+                    value,
+                },
+                2
+            )
+        }
+
+        0x14 => {
+            let reg = (ins >> 8) as u8;
+            let value = ((get(insns, pc + 1) as i16) as i32) << 16;
+            (
+                Instruction::Const {
+                    register: reg,
+                    value,
+                },
+                2
+            )
+        }
+
+        0x1a => {
+            let reg = (ins >> 8) as u8;
+            let idx = get(insns, pc + 1) as usize;
+            let value =
+                dex.strings
+                    .strings
+                    .get(idx)
+                    .cloned()
+                    .unwrap_or(
+                        format!(
+                            "<bad_string:{}>",
+                            idx
+                        )
+                    );
+            (
+                Instruction::ConstString {
+                    register: reg,
+                    value,
+                },
+                2
+            )
+
+        }
+
+        0x1f => {
+            let idx = get(insns,pc+1) as usize;
+            (
+                Instruction::CheckCast {
+                    class:
+                        resolve_type(
+                            idx,
+                            dex
+                        )
+                },
+                2
+            )
+        }
+
+        0x22 => {
+            let idx = get(insns,pc+1) as usize;
+            (
+                Instruction::NewInstance {
+                    class:
+                        resolve_type(
+                            idx,
+                            dex
+                        )
+                },
+                2
+            )
+        }
+
+        0x23 => (
+            Instruction::Unknown {
+                opcode,
+                raw:ins
+            },
+            2
+        ),
+
+        0x24 => (
+            Instruction::Unknown {
+                opcode,
+                raw:ins
+            },
+            3
+        ),
+
+        0x26 => (
+            Instruction::Unknown {
+                opcode,
+                raw:ins
+            },
+            3
+        ),
+
+        0x27 => (
+            Instruction::Throw,
+            1
+        ),
+
+        0x28 => (
+            Instruction::Branch {
+                kind:
+                    BranchKind::Goto
+            },
+            1
+        ),
+
+        0x29 => (
+            Instruction::Branch {
+                kind:
+                    BranchKind::Goto
+            },
+            2
+        ),
+
+        0x2a => (
+            Instruction::Branch {
+                kind:
+                    BranchKind::Goto
+            },
+            3
+        ),
+
+        // switch
+        0x2b | 0x2c => (
+            Instruction::Unknown {
+                opcode,
+                raw:ins
+            },
+            3
+        ),
+
+        // if family
+        0x32..=0x3d => (
+            Instruction::Branch {
+                kind:
+                    BranchKind::IfEqz
+            },
+            2
+        ),
+
+        0x52..=0x5f => {
+            let idx = get(insns,pc+1) as usize;
+            (
+                Instruction::FieldAccess {
+                    field:
+                        resolve_field(
+                            idx,
+                            dex
+                        )
+                },
+                2
+            )
+        }
+
+        0x60..=0x6d => {
+            let idx = get(insns,pc+1) as usize;
+            (
+                Instruction::FieldAccess {
+                    field:
+                        resolve_field(
+                            idx,
+                            dex
+                        )
+                },
+                2
+            )
+        }
+
+        0x6e => invoke(
+            ins,pc,insns,dex,
+            InvokeKind::Virtual
+        ),
+
+        0x6f => invoke(
+            ins,pc,insns,dex,
+            InvokeKind::Super
+        ),
+
+        0x70 => invoke(
+            ins,pc,insns,dex,
+            InvokeKind::Direct
+        ),
+
+        0x71 => invoke(
+            ins,pc,insns,dex,
+            InvokeKind::Static
+        ),
+
+        0x72 => invoke(
+            ins,pc,insns,dex,
+            InvokeKind::Interface
+        ),
+
+        _ => {
+                let size = opcode_width(opcode);
+                (
+                Instruction::Unknown {
+                    opcode,
+                    raw:ins
+                },
+                size
+            )
         }
     }
 }
 
-fn resolve_method(idx: usize, dex: &DexDocument) -> String {
-    let method = &dex.method_ids.methods[idx];
-    let class = &dex.type_ids.types[method.class_idx as usize];
-    let class_name = &dex.strings.strings[class.descriptor_idx as usize];
-    let name = &dex.strings.strings[method.name_idx as usize];
-    
-    format!(
-        "{}->{}",
-        class_name,
-        name
+fn invoke(
+    first:u16,
+    pc:usize,
+    insns:&[u16],
+    dex:&DexDocument,
+    kind:InvokeKind
+
+) -> (Instruction,usize) {
+
+    let method_idx = get(insns,pc+1) as usize;
+    let regs = decode_35c_registers( first, get(insns,pc+2)); 
+    (
+        Instruction::Invoke {
+            kind,
+            method:
+                resolve_method(
+                    method_idx,
+                    dex
+                ),
+            registers:regs,
+        },
+        3
     )
 }
 
-fn resolve_field(idx: usize, dex: &DexDocument) -> String {
-    let field = &dex.field_ids.fields[idx];
-    let class = &dex.type_ids.types[field.class_idx as usize];
-    let class_name = &dex.strings.strings[class.descriptor_idx as usize];
-    let name = &dex.strings.strings[field.name_idx as usize];
+fn resolve_method(idx:usize, dex:&DexDocument) -> String {
+    let Some(m)= dex.method_ids.methods.get(idx)
+    else {
+        return format!(
+            "<bad_method:{}>",
+            idx
+        );
+    };
+
     format!(
         "{}->{}",
-        class_name,
-        name
+        resolve_type(
+            m.class_idx as usize,
+            dex
+        ),
+
+        dex.strings.strings
+        .get(m.name_idx as usize)
+        .unwrap_or(
+            &"<bad>".into()
+        )
     )
 }
 
-fn decode_35c_registers(first: u16, third: u16) -> Vec<u8> {
-    let count = (first >> 12) as usize;
-    let c = (third & 0xf) as u8;
-    let d = ((third >> 4) & 0xf) as u8;
-    let e = ((third >> 8) & 0xf) as u8;
-    let f = ((third >> 12) & 0xf) as u8;
-    let regs = [c,d,e,f];
+fn resolve_field(idx:usize, dex:&DexDocument) -> String {
+    let Some(f)= dex.field_ids.fields.get(idx)
+    else {
+        return format!(
+            "<bad_field:{}>",
+            idx
+        );
+    };
 
-    regs[..count].to_vec()
+    format!(
+        "{}->{}",
+        resolve_type(
+            f.class_idx as usize,
+            dex
+        ),
+        dex.strings.strings.get(f.name_idx as usize).unwrap_or(&"<bad>".into())
+    )
+}
+
+fn resolve_type(idx:usize, dex:&DexDocument) -> String{
+    let Some(t) = dex.type_ids.types.get(idx)
+    else {
+        return format!(
+            "<bad_type:{}>",
+            idx
+        );
+    };
+    dex.strings.strings.get(t.descriptor_idx as usize).cloned().unwrap_or("<bad_descriptor>".into())
+}
+
+fn decode_35c_registers(first:u16, third:u16) -> Vec<u8> {
+    let count = (first>>12) as usize;
+    let regs=[
+        (third&0xf) as u8,
+        ((third>>4)&0xf) as u8,
+        ((third>>8)&0xf) as u8,
+        ((third>>12)&0xf) as u8,
+        ((first>>8)&0xf) as u8,
+    ];
+    regs[..count.min(5)].to_vec()
+}
+
+fn get(data:&[u16], idx:usize) -> u16 {
+    *data.get(idx).unwrap_or(&0)
 }

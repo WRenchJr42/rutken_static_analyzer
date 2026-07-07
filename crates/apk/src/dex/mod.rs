@@ -1,7 +1,5 @@
 pub mod header;
 pub mod parser;
-pub mod constants;
-pub mod types;
 pub mod string_id;
 pub mod strings;
 pub mod type_id;
@@ -12,3 +10,6 @@ pub mod class_def;
 pub mod class_data;
 pub mod code_item;
 pub mod disasm;
+pub mod instruction;
+pub mod opcode;
+pub mod model;
