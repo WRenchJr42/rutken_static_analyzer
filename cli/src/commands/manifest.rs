@@ -1,26 +1,33 @@
-use crate::commands::parse_manifest;
-use crate::errors::ApkError;
-use crate::reader::ApkContainer;
-use crate::axml::node::XmlNode;
-use crate::axml::resolve::ResolvedAttribute;
+use ir::{ApkIR, Manifest};
 
-pub fn render(container: &ApkContainer) -> Result<String, ApkError> {
-    let manifest = parse_manifest(container)?;
-
+pub fn render(ir: &ApkIR) -> String {
     let mut output = String::new();
+    let Some(manifest) = &ir.manifest else {
+        output.push_str("<manifest>\n</manifest>\n");
+        return output;
+    };
+
+    render_manifest(manifest, &mut output);
+    output
+}
+
+fn render_manifest(manifest: &Manifest, output: &mut String) {
     output.push_str("<manifest");
-    if let Some(package) = manifest.package {
+    if let Some(package) = &manifest.package {
         output.push_str(&format!(" package=\"{}\"", package));
     }
     output.push_str(">\n");
 
-    for permission in manifest.permissions {
-        output.push_str(&format!("  <uses-permission android:name=\"{}\" />\n", permission));
+    for permission in &manifest.permissions {
+        output.push_str(&format!(
+            "  <uses-permission android:name=\"{}\" />\n",
+            permission
+        ));
     }
 
-    if let Some(app) = manifest.application {
+    if let Some(app) = &manifest.application {
         output.push_str("  <application");
-        if let Some(label) = app.label {
+        if let Some(label) = &app.label {
             output.push_str(&format!(" android:label=\"{}\"", label));
         }
         if app.debuggable {
@@ -33,7 +40,7 @@ pub fn render(container: &ApkContainer) -> Result<String, ApkError> {
             output.push_str(" />\n");
         } else {
             output.push_str(">\n");
-            for activity in app.activities {
+            for activity in &app.activities {
                 output.push_str(&format!("    <activity android:name=\"{}\"", activity.name));
                 if let Some(exported) = activity.exported {
                     output.push_str(&format!(" android:exported=\"{}\"", exported));
@@ -45,18 +52,4 @@ pub fn render(container: &ApkContainer) -> Result<String, ApkError> {
     }
 
     output.push_str("</manifest>\n");
-    Ok(output)
-}
-
-#[allow(dead_code)]
-fn render_node(_node: &XmlNode, _indent: usize) -> String {
-    String::new()
-}
-
-#[allow(dead_code)]
-fn format_attribute(attribute: &ResolvedAttribute) -> String {
-    match &attribute.namespace {
-        Some(namespace) => format!("{}:{}=\"{}\"", namespace, attribute.name, attribute.value),
-        None => format!("{}=\"{}\"", attribute.name, attribute.value),
-    }
 }

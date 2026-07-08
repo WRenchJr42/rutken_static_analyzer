@@ -1,12 +1,16 @@
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use apk::commands::{classes, disasm, dump, info, manifest, search, strings};
-use apk::reader::ApkReader;
 use clap::{Parser, Subcommand, ValueEnum};
+use cli::commands::{classes, disasm, dump, info, manifest, search, strings};
+use engine::Analyzer;
 
 #[derive(Debug, Parser)]
-#[command(name = "rutken", version, about = "Rust Android APK inspection toolkit")]
+#[command(
+    name = "rutken",
+    version,
+    about = "Rust Android APK inspection toolkit"
+)]
 struct Cli {
     apk: PathBuf,
 
@@ -49,16 +53,17 @@ enum DumpInclude {
 fn main() {
     let cli = Cli::parse();
 
-    let container = match ApkReader::read(&cli.apk) {
-        Ok(container) => container,
+    let ir = match Analyzer::open(&cli.apk).and_then(|analyzer| analyzer.analyze()) {
+        Ok(ir) => ir,
         Err(err) => {
             eprintln!("Error: {}", err);
             std::process::exit(1);
         }
     };
 
-    let result = match cli.command {
-        Command::Info => info::collect(&container).map(|report| {
+    match cli.command {
+        Command::Info => {
+            let report = info::collect(&ir);
             write_line(&format!("SHA256: {}", report.sha256));
             write_line(&format!("Size: {}MB", bytes_to_mb(report.size)));
             write_line(&format!("DEX files: {}", report.dex_files.len()));
@@ -88,54 +93,62 @@ fn main() {
                     write_line(&format!(" {}", architecture));
                 }
             }
-        }),
-        Command::Manifest => manifest::render(&container).map(|output| write_all(&output)),
-        Command::Strings { grep } => strings::collect(&container, grep.as_deref()).map(|values| {
+        }
+        Command::Manifest => {
+            let output = manifest::render(&ir);
+            write_all(&output);
+        }
+        Command::Strings { grep } => {
+            let values = strings::collect(&ir, grep.as_deref());
             for value in values {
                 write_line(&value);
             }
-        }),
-        Command::Classes => classes::format(&container).map(|output| write_all(&output)),
-        Command::Search { query } => search::collect(&container, &query).map(|matches| write_all(&search::format(&matches))),
-        Command::Disasm { query } => disasm::render(&container, &query).map(|output| write_all(&output)),
+        }
+        Command::Classes => {
+            let output = classes::format(&ir);
+            write_all(&output);
+        }
+        Command::Search { query } => {
+            let matches = search::collect(&ir, &query);
+            write_all(&search::format(&matches));
+        }
+        Command::Disasm { query } => {
+            let output = disasm::render(&ir, &query);
+            write_all(&output);
+        }
         Command::Dump { json, raw, include } => {
-            let include_strings = include.iter().any(|value| matches!(value, DumpInclude::Strings));
+            let include_strings = include
+                .iter()
+                .any(|value| matches!(value, DumpInclude::Strings));
 
             if raw {
-                dump::build_raw(&container).map(|report| {
-                    if json {
-                        match serde_json::to_string_pretty(&report) {
-                            Ok(json) => write_line(&json),
-                            Err(err) => {
-                                eprintln!("Error: {}", err);
-                                std::process::exit(1);
-                            }
+                let report = dump::build_raw(&ir);
+                if json {
+                    match serde_json::to_string_pretty(&report) {
+                        Ok(json) => write_line(&json),
+                        Err(err) => {
+                            eprintln!("Error: {}", err);
+                            std::process::exit(1);
                         }
-                    } else {
-                        write_line(&format!("{:#?}", report));
                     }
-                })
+                } else {
+                    write_line(&format!("{:#?}", report));
+                }
             } else {
-                dump::build(&container, include_strings).map(|report| {
-                    if json {
-                        match serde_json::to_string_pretty(&report) {
-                            Ok(json) => write_line(&json),
-                            Err(err) => {
-                                eprintln!("Error: {}", err);
-                                std::process::exit(1);
-                            }
+                let report = dump::build(&ir, include_strings);
+                if json {
+                    match serde_json::to_string_pretty(&report) {
+                        Ok(json) => write_line(&json),
+                        Err(err) => {
+                            eprintln!("Error: {}", err);
+                            std::process::exit(1);
                         }
-                    } else {
-                        write_line(&format!("{:#?}", report));
                     }
-                })
+                } else {
+                    write_line(&format!("{:#?}", report));
+                }
             }
         }
-    };
-
-    if let Err(err) = result {
-        eprintln!("Error: {}", err);
-        std::process::exit(1);
     }
 }
 
@@ -172,4 +185,3 @@ fn handle_stdout_error(err: io::Error) {
     eprintln!("Error: {}", err);
     std::process::exit(1);
 }
-

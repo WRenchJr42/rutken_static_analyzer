@@ -1,13 +1,8 @@
 use crate::axml::node::XmlNode;
 
-use crate::manifest::model::{
-    AndroidManifest,
-    Application,
-    Activity,
-};
+use crate::manifest::model::{Activity, AndroidManifest, Application};
 
-
-pub fn decode_manifest(root: &XmlNode) -> AndroidManifest {
+pub fn parse_manifest(root: &XmlNode) -> AndroidManifest {
     let mut manifest = AndroidManifest {
         package: None,
         min_sdk: None,
@@ -22,7 +17,6 @@ pub fn decode_manifest(root: &XmlNode) -> AndroidManifest {
         }
     }
 
-
     for child in &root.children {
         match child.name.as_str() {
             "uses-sdk" => {
@@ -36,11 +30,9 @@ pub fn decode_manifest(root: &XmlNode) -> AndroidManifest {
                         }
 
                         _ => {}
-
                     }
                 }
             }
-
 
             "uses-permission" => {
                 for attr in &child.attributes {
@@ -61,20 +53,16 @@ pub fn decode_manifest(root: &XmlNode) -> AndroidManifest {
                 for attr in &child.attributes {
                     match attr.name.as_str() {
                         "label" => {
-                            app.label =
-                                Some(attr.value.clone());
+                            app.label = Some(attr.value.clone());
                         }
                         "debuggable" => {
-                            app.debuggable =
-                                attr.value == "true";
+                            app.debuggable = attr.value == "true";
                         }
                         "allowBackup" => {
-                            app.allow_backup =
-                                attr.value == "true";
+                            app.allow_backup = attr.value == "true";
                         }
 
                         _ => {}
-
                     }
                 }
 
@@ -88,14 +76,10 @@ pub fn decode_manifest(root: &XmlNode) -> AndroidManifest {
                         for attr in &node.attributes {
                             match attr.name.as_str() {
                                 "name" => {
-                                    activity.name =
-                                        attr.value.clone();
+                                    activity.name = attr.value.clone();
                                 }
                                 "exported" => {
-                                    activity.exported =
-                                        Some(
-                                            attr.value == "true"
-                                        );
+                                    activity.exported = Some(attr.value == "true");
                                 }
 
                                 _ => {}

@@ -7,8 +7,10 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-apk = { path = "../crates/apk" }
 clap = { version = "4", features = ["derive"] }
+engine = { path = "../crates/engine" }
+ir = { path = "../crates/ir" }
+serde = { workspace = true }
 serde_json = { workspace = true }
 
 [[bin]]

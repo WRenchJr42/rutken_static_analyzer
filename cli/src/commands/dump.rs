@@ -1,16 +1,13 @@
 use serde::Serialize;
 
-use crate::commands::{info, parse_manifest};
-use crate::dex::model::{build_dex_model, DexModel};
-use crate::dex::instruction::Instruction;
-use crate::errors::ApkError;
-use crate::reader::ApkContainer;
-use crate::manifest::model::AndroidManifest;
+use ir::{ApkIR, DexFile, Instruction, Manifest};
+
+use crate::commands::info;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ApkReport {
     pub info: info::InfoReport,
-    pub manifest: AndroidManifest,
+    pub manifest: Option<Manifest>,
     pub dex: DexSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub strings: Option<Vec<String>>,
@@ -42,36 +39,38 @@ pub struct MethodInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct RawApkReport {
     pub info: info::InfoReport,
-    pub manifest: AndroidManifest,
-    pub dex: Vec<DexModel>,
+    pub manifest: Option<Manifest>,
+    pub dex: Vec<DexFile>,
 }
 
-pub fn build(container: &ApkContainer, include_strings: bool) -> Result<ApkReport, ApkError> {
-    let info = info::collect(container)?;
-    let manifest = parse_manifest(container)?;
+pub fn build(ir: &ApkIR, include_strings: bool) -> ApkReport {
+    let info = info::collect(ir);
+    let manifest = ir.manifest.clone();
     let mut files = Vec::new();
-    let mut strings = if include_strings { Some(Vec::new()) } else { None };
+    let mut strings = if include_strings {
+        Some(Vec::new())
+    } else {
+        None
+    };
 
-    for dex_file in &container.dex_files {
-        let model = build_dex_model(dex_file.name.clone(), &dex_file.bytes)?;
-
+    for dex_file in &ir.dex_files {
         if let Some(collected_strings) = strings.as_mut() {
-            collected_strings.extend(model.strings.iter().cloned());
+            collected_strings.extend(dex_file.strings.iter().cloned());
         }
 
         files.push(DexFileInfo {
-            name: model.name,
-            classes: model
+            name: dex_file.name.clone(),
+            classes: dex_file
                 .classes
-                .into_iter()
+                .iter()
                 .map(|class| ClassInfo {
-                    name: class.name,
+                    name: class.name.clone(),
                     methods: class
                         .methods
-                        .into_iter()
+                        .iter()
                         .map(|method| MethodInfo {
-                            name: method.name,
-                            instructions: method.instructions,
+                            name: method.name.clone(),
+                            instructions: method.instructions.clone(),
                         })
                         .collect(),
                 })
@@ -84,22 +83,18 @@ pub fn build(container: &ApkContainer, include_strings: bool) -> Result<ApkRepor
         collected_strings.dedup();
     }
 
-    Ok(ApkReport {
+    ApkReport {
         info,
         manifest,
         dex: DexSummary { files },
         strings,
-    })
+    }
 }
 
-pub fn build_raw(container: &ApkContainer) -> Result<RawApkReport, ApkError> {
-    let info = info::collect(container)?;
-    let manifest = parse_manifest(container)?;
-    let mut dex = Vec::new();
-
-    for dex_file in &container.dex_files {
-        dex.push(build_dex_model(dex_file.name.clone(), &dex_file.bytes)?);
+pub fn build_raw(ir: &ApkIR) -> RawApkReport {
+    RawApkReport {
+        info: info::collect(ir),
+        manifest: ir.manifest.clone(),
+        dex: ir.dex_files.clone(),
     }
-
-    Ok(RawApkReport { info, manifest, dex })
 }

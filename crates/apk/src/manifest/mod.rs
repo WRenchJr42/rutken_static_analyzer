@@ -1,12 +1,11 @@
 pub mod model;
-pub mod decoder;
+pub mod parser;
 
 use crate::errors::ApkError;
 use std::io::{Read, Seek};
 use zip::ZipArchive;
 
 pub struct ManifestParser;
-
 
 impl ManifestParser {
     pub fn extract<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<Vec<u8>, ApkError> {

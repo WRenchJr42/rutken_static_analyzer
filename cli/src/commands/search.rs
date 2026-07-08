@@ -1,6 +1,4 @@
-use crate::dex::model::build_dex_model;
-use crate::errors::ApkError;
-use crate::reader::ApkContainer;
+use ir::ApkIR;
 
 #[derive(Debug, Clone)]
 pub struct SearchMatch {
@@ -11,14 +9,12 @@ pub struct SearchMatch {
     pub value: String,
 }
 
-pub fn collect(container: &ApkContainer, query: &str) -> Result<Vec<SearchMatch>, ApkError> {
+pub fn collect(ir: &ApkIR, query: &str) -> Vec<SearchMatch> {
     let query = query.to_lowercase();
     let mut matches = Vec::new();
 
-    for dex_file in &container.dex_files {
-        let model = build_dex_model(dex_file.name.clone(), &dex_file.bytes)?;
-
-        for string in &model.strings {
+    for dex_file in &ir.dex_files {
+        for string in &dex_file.strings {
             if string.to_lowercase().contains(&query) {
                 matches.push(SearchMatch {
                     kind: "string".to_string(),
@@ -30,7 +26,7 @@ pub fn collect(container: &ApkContainer, query: &str) -> Result<Vec<SearchMatch>
             }
         }
 
-        for class in model.classes {
+        for class in &dex_file.classes {
             if class.name.to_lowercase().contains(&query) {
                 matches.push(SearchMatch {
                     kind: "class".to_string(),
@@ -41,19 +37,26 @@ pub fn collect(container: &ApkContainer, query: &str) -> Result<Vec<SearchMatch>
                 });
             }
 
-            for method in class.methods {
-                let method_name = method.name.split("->").last().unwrap_or(&method.name).to_string();
-                if method_name.to_lowercase().contains(&query) || method.name.to_lowercase().contains(&query) {
+            for method in &class.methods {
+                let method_name = method
+                    .name
+                    .split("->")
+                    .last()
+                    .unwrap_or(&method.name)
+                    .to_string();
+                if method_name.to_lowercase().contains(&query)
+                    || method.name.to_lowercase().contains(&query)
+                {
                     matches.push(SearchMatch {
                         kind: "method".to_string(),
                         dex: dex_file.name.clone(),
                         class_name: Some(class.name.clone()),
                         method_name: Some(method_name.clone()),
-                        value: method.name,
+                        value: method.name.clone(),
                     });
                 }
 
-                for instruction in method.instructions {
+                for instruction in &method.instructions {
                     let text = format!("{:?}", instruction);
                     if text.to_lowercase().contains(&query) {
                         matches.push(SearchMatch {
@@ -69,7 +72,7 @@ pub fn collect(container: &ApkContainer, query: &str) -> Result<Vec<SearchMatch>
         }
     }
 
-    Ok(matches)
+    matches
 }
 
 pub fn format(matches: &[SearchMatch]) -> String {

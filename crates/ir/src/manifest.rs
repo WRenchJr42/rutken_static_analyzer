@@ -1,7 +1,7 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize)]
-pub struct AndroidManifest {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Manifest {
     pub package: Option<String>,
     pub min_sdk: Option<u32>,
     pub target_sdk: Option<u32>,
@@ -9,7 +9,7 @@ pub struct AndroidManifest {
     pub application: Option<Application>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Application {
     pub label: Option<String>,
     pub debuggable: bool,
@@ -17,7 +17,7 @@ pub struct Application {
     pub activities: Vec<Activity>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Activity {
     pub name: String,
     pub exported: Option<bool>,

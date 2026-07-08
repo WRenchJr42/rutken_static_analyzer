@@ -74,7 +74,6 @@ name = "apk"
 version = "0.0.1"
 dependencies = [
  "serde",
- "serde_json",
  "sha2",
  "thiserror",
  "zip",
@@ -201,8 +200,10 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 name = "cli"
 version = "0.1.0"
 dependencies = [
- "apk",
  "clap",
+ "engine",
+ "ir",
+ "serde",
  "serde_json",
 ]
 
@@ -313,6 +314,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine"
+version = "0.0.1"
+dependencies = [
+ "apk",
+ "ir",
+ "thiserror",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -396,6 +406,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "ir"
+version = "0.0.1"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
