@@ -3,9 +3,17 @@ use crate::binary::BinaryReader;
 
 #[derive(Debug)]
 pub struct EndElement {
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub line_number: u32,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub comment: u32,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub namespace: u32,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub name: u32,
 }
 

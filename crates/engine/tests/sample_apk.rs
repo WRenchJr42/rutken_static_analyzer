@@ -24,3 +24,92 @@ fn analyzer_builds_apk_ir() {
             .any(|class| class.name.contains("MainActivity"))
     );
 }
+
+#[test]
+fn analyzer_resolves_mainactivity_and_onclick_without_bad_sentinels() {
+    let ir = Analyzer::open(sample_apk())
+        .expect("sample apk should open")
+        .analyze()
+        .expect("sample apk should analyze");
+
+    // Find MainActivity in the IR
+    let mut found_activity = false;
+    let mut found_onclick = false;
+
+    for dex_file in &ir.dex_files {
+        for class in &dex_file.classes {
+            if class.name.contains("MainActivity") {
+                found_activity = true;
+
+                // Check that no bad sentinels appear in the resolved methods and instructions
+                for method in &class.methods {
+                    assert!(
+                        !method.name.contains("<bad_"),
+                        "MainActivity method should not contain bad sentinels: {}",
+                        method.name
+                    );
+
+                    if method.name.contains("onClick") {
+                        found_onclick = true;
+                    }
+
+                    // Check all instructions for bad sentinels
+                    for instruction in &method.instructions {
+                        match instruction {
+                            ir::Instruction::Invoke { method, .. } => {
+                                let display = method.display(&dex_file.strings);
+                                assert!(
+                                    !display.contains("<bad_"),
+                                    "invoke in MainActivity should not have bad sentinels: {}",
+                                    display
+                                );
+                            }
+                            ir::Instruction::ConstString { value, .. } => {
+                                let resolved = value.resolve(&dex_file.strings);
+                                assert!(
+                                    !resolved.contains("<bad_"),
+                                    "const-string in MainActivity should not have bad sentinels: {}",
+                                    resolved
+                                );
+                            }
+                            ir::Instruction::CheckCast { class } => {
+                                let display = class.display(&dex_file.strings);
+                                assert!(
+                                    !display.contains("<bad_"),
+                                    "check-cast in MainActivity should not have bad sentinels: {}",
+                                    display
+                                );
+                            }
+                            ir::Instruction::NewInstance { class } => {
+                                let display = class.display(&dex_file.strings);
+                                assert!(
+                                    !display.contains("<bad_"),
+                                    "new-instance in MainActivity should not have bad sentinels: {}",
+                                    display
+                                );
+                            }
+                            ir::Instruction::FieldAccess { field } => {
+                                let display = field.display(&dex_file.strings);
+                                assert!(
+                                    !display.contains("<bad_"),
+                                    "field access in MainActivity should not have bad sentinels: {}",
+                                    display
+                                );
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(
+        found_activity,
+        "MainActivity should be found in the IR"
+    );
+    assert!(
+        found_onclick,
+        "onClick method should be found in MainActivity"
+    );
+}

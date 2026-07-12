@@ -6,8 +6,14 @@ pub struct Attribute {
     pub namespace: u32,
     pub name: u32,
     pub raw_value: u32,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub value_size: u16,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub res0: u8,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub data_type: u8,
     pub data: u32,
 }

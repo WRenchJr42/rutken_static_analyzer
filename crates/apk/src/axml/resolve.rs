@@ -8,15 +8,24 @@ pub struct ResolvedAttribute {
     pub value: String,
 }
 
+/// Fetch a string from the pool by index, falling back to a sentinel value
+/// when the index is out of range (untrusted/malformed AXML input).
+fn resolve_string(pool: &StringPool, idx: u32) -> String {
+    pool.strings
+        .get(idx as usize)
+        .cloned()
+        .unwrap_or_else(|| format!("<bad_string:{}>", idx))
+}
+
 pub fn resolve_attribute(attribute: &Attribute, pool: &StringPool) -> ResolvedAttribute {
     let namespace = if attribute.namespace != u32::MAX {
-        Some(pool.strings[attribute.namespace as usize].clone())
+        Some(resolve_string(pool, attribute.namespace))
     } else {
         None
     };
-    let name = pool.strings[attribute.name as usize].clone();
+    let name = resolve_string(pool, attribute.name);
     let value = if attribute.raw_value != u32::MAX {
-        pool.strings[attribute.raw_value as usize].clone()
+        resolve_string(pool, attribute.raw_value)
     } else {
         attribute.data.to_string()
     };

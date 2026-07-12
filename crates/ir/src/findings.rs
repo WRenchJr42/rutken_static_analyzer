@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+/// A security or quality finding in the APK.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Finding {
     pub id: String,
@@ -10,6 +11,7 @@ pub struct Finding {
     pub evidence: Vec<String>,
 }
 
+/// Severity level of a finding.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FindingSeverity {
     Info,

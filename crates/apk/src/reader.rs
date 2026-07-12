@@ -10,12 +10,14 @@ use crate::errors::ApkError;
 use crate::manifest::ManifestParser;
 
 #[derive(Debug, Clone)]
+/// A DEX file extracted from an APK.
 pub struct ApkDexFile {
     pub name: String,
     pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone)]
+/// Parsed APK contents: manifest, DEX files, and metadata.
 pub struct ApkContainer {
     pub sha256: String,
     pub file_size: u64,
@@ -48,6 +50,7 @@ pub(crate) fn should_skip_class(name: &str) -> bool {
         || name.ends_with("/R;")
 }
 
+/// APK file parser.
 pub struct ApkReader;
 
 impl ApkReader {
@@ -90,20 +93,18 @@ impl ApkReader {
                 info.dex_count += 1;
             }
 
-            if name.ends_with(".so") {
-                if let Some(rest) = name.strip_prefix("lib/") {
-                    if let Some(arch) = rest.split('/').next() {
-                        if !info.architectures.iter().any(|existing| existing == arch) {
+            if name.ends_with(".so")
+                && let Some(rest) = name.strip_prefix("lib/")
+                    && let Some(arch) = rest.split('/').next()
+                        && !info.architectures.iter().any(|existing| existing == arch) {
                             info.architectures.push(arch.to_string());
                         }
-                    }
-                }
-            }
         }
 
         Ok(info)
     }
 
+    /// Parse an APK file and return its contents.
     pub fn read(path: impl AsRef<Path>) -> Result<ApkContainer, ApkError> {
         let file = File::open(&path)?;
         let mut archive = ZipArchive::new(file)?;

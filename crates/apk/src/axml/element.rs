@@ -4,15 +4,35 @@ use crate::axml::attribute::Attribute;
 
 #[derive(Debug)]
 pub struct StartElement {
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub line_number: u32,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub comment: u32,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub namespace: u32,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub name: u32,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub attribute_start: u16,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub attribute_size: u16,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub attribute_count: u16,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub id_index: u16,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub class_index: u16,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub style_index: u16,
     pub attributes: Vec<Attribute>,
 }

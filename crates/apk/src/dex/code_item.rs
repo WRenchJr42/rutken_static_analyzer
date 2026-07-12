@@ -3,11 +3,23 @@ use crate::errors::ApkError;
 
 #[derive(Debug)]
 pub struct CodeItem {
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub registers_size: u16,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub ins_size: u16,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub outs_size: u16,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub tries_size: u16,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub debug_info_off: u32,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub insns_size: u32,
     pub instructions: Vec<u16>,
 }

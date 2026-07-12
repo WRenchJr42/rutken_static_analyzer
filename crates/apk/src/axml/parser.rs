@@ -47,12 +47,21 @@ impl AxmlParser {
                 for attribute in &element.attributes {
                     attributes.push(resolve_attribute(attribute, &string_pool));   
                 }
-                let node = XmlNode::new(string_pool.strings[element.name as usize].clone(), attributes);
+                let name = string_pool
+                    .strings
+                    .get(element.name as usize)
+                    .cloned()
+                    .unwrap_or_else(|| format!("<bad_string:{}>", element.name));
+                let node = XmlNode::new(name, attributes);
                 stack.push(node);
             }
             RES_XML_END_ELEMENT => {
                 let _end = EndElement::parse(&mut reader)?;
-                let node = stack.pop().unwrap();
+                let Some(node) = stack.pop() else {
+                    return Err(ApkError::InvalidFormat(
+                        "unbalanced XML end element".into(),
+                    ));
+                };
                 if let Some(parent) = stack.last_mut() {
                     parent.children.push(node);
                 } else {
@@ -75,5 +84,52 @@ impl AxmlParser {
         resource_map,
         root,
     })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::axml::constants::RES_XML_END_ELEMENT;
+
+    /// Builds a minimal AXML document: header + empty string pool + empty
+    /// resource map, followed by a single trailing chunk of `trailing_type`.
+    fn minimal_axml_with_trailing_chunk(trailing_type: u16) -> Vec<u8> {
+        let mut bytes = Vec::new();
+
+        // AxmlHeader (8 bytes): chunk_type, header_size, file_size.
+        bytes.extend_from_slice(&0x0003u16.to_le_bytes());
+        bytes.extend_from_slice(&8u16.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+
+        // StringPool header (28 bytes), zero strings, zero styles.
+        bytes.extend_from_slice(&0x0001u16.to_le_bytes()); // chunk_type
+        bytes.extend_from_slice(&28u16.to_le_bytes()); // header_size
+        bytes.extend_from_slice(&28u32.to_le_bytes()); // chunk_size
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // string_count
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // style_count
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // flags
+        bytes.extend_from_slice(&28u32.to_le_bytes()); // strings_start
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // styles_start
+
+        // Resource map: header only, zero entries.
+        bytes.extend_from_slice(&0x0180u16.to_le_bytes()); // chunk_type
+        bytes.extend_from_slice(&8u16.to_le_bytes()); // header_size
+        bytes.extend_from_slice(&8u32.to_le_bytes()); // chunk_size
+
+        // Trailing chunk header + a plausible EndElement-sized payload.
+        bytes.extend_from_slice(&trailing_type.to_le_bytes());
+        bytes.extend_from_slice(&16u16.to_le_bytes());
+        bytes.extend_from_slice(&24u32.to_le_bytes());
+        bytes.extend_from_slice(&[0u8; 16]); // line_number/comment/namespace/name
+
+        bytes
+    }
+
+    #[test]
+    fn parse_rejects_unbalanced_end_element_without_panicking() {
+        let bytes = minimal_axml_with_trailing_chunk(RES_XML_END_ELEMENT);
+        let result = AxmlParser::parse(&bytes);
+        assert!(result.is_err(), "unbalanced END_ELEMENT should be a parse error, not a panic");
     }
 }

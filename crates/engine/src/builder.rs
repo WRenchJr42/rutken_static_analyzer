@@ -1,16 +1,13 @@
 use apk::axml::parser::AxmlParser;
-use apk::dex::instruction as apk_instruction;
-use apk::dex::model::{DexModel, build_dex_model};
+use apk::dex::model::build_dex_model;
 use apk::errors::ApkError;
 use apk::manifest::model as apk_manifest;
 use apk::manifest::parser::parse_manifest;
 use apk::reader::ApkContainer;
-use ir::{
-    Activity, ApkIR, Application, BranchKind, Class, DexFile, Instruction, InvokeKind, Manifest,
-    Metadata, Method,
-};
+use ir::{Activity, ApkIR, Application, DexFile, Manifest, Metadata};
 
 use crate::error::EngineError;
+use crate::lower::dex::convert_dex_model;
 
 pub(crate) struct IrBuilder<'a> {
     container: &'a ApkContainer,
@@ -99,87 +96,5 @@ fn convert_activity(activity: apk_manifest::Activity) -> Activity {
     Activity {
         name: activity.name,
         exported: activity.exported,
-    }
-}
-
-fn convert_dex_model(model: DexModel) -> DexFile {
-    DexFile {
-        name: model.name,
-        strings: model.strings,
-        classes: model
-            .classes
-            .into_iter()
-            .map(|class| Class {
-                name: class.name,
-                methods: class
-                    .methods
-                    .into_iter()
-                    .map(|method| Method {
-                        name: method.name,
-                        access_flags: method.access_flags,
-                        code_offset: (method.code_off != 0).then_some(method.code_off),
-                        instructions: method
-                            .instructions
-                            .into_iter()
-                            .map(convert_instruction)
-                            .collect(),
-                    })
-                    .collect(),
-            })
-            .collect(),
-    }
-}
-
-fn convert_instruction(instruction: apk_instruction::Instruction) -> Instruction {
-    match instruction {
-        apk_instruction::Instruction::Const { register, value } => {
-            Instruction::Const { register, value }
-        }
-        apk_instruction::Instruction::ConstString { register, value } => {
-            Instruction::ConstString { register, value }
-        }
-        apk_instruction::Instruction::Invoke {
-            kind,
-            method,
-            registers,
-        } => Instruction::Invoke {
-            kind: convert_invoke_kind(kind),
-            method,
-            registers,
-        },
-        apk_instruction::Instruction::FieldAccess { field } => Instruction::FieldAccess { field },
-        apk_instruction::Instruction::NewInstance { class } => Instruction::NewInstance { class },
-        apk_instruction::Instruction::CheckCast { class } => Instruction::CheckCast { class },
-        apk_instruction::Instruction::MoveResult { register } => {
-            Instruction::MoveResult { register }
-        }
-        apk_instruction::Instruction::Return => Instruction::Return,
-        apk_instruction::Instruction::Throw => Instruction::Throw,
-        apk_instruction::Instruction::Nop => Instruction::Nop,
-        apk_instruction::Instruction::Payload => Instruction::Payload,
-        apk_instruction::Instruction::Branch { kind } => Instruction::Branch {
-            kind: convert_branch_kind(kind),
-        },
-        apk_instruction::Instruction::Unknown { opcode, raw } => {
-            Instruction::Unknown { opcode, raw }
-        }
-    }
-}
-
-fn convert_invoke_kind(kind: apk_instruction::InvokeKind) -> InvokeKind {
-    match kind {
-        apk_instruction::InvokeKind::Static => InvokeKind::Static,
-        apk_instruction::InvokeKind::Virtual => InvokeKind::Virtual,
-        apk_instruction::InvokeKind::Direct => InvokeKind::Direct,
-        apk_instruction::InvokeKind::Super => InvokeKind::Super,
-        apk_instruction::InvokeKind::Interface => InvokeKind::Interface,
-    }
-}
-
-fn convert_branch_kind(kind: apk_instruction::BranchKind) -> BranchKind {
-    match kind {
-        apk_instruction::BranchKind::Goto => BranchKind::Goto,
-        apk_instruction::BranchKind::IfEqz => BranchKind::IfEqz,
-        apk_instruction::BranchKind::IfNez => BranchKind::IfNez,
     }
 }

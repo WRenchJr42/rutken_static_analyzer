@@ -3,7 +3,9 @@ use crate::errors::ApkError;
 
 #[derive(Debug, Clone)]
 pub struct EncodedField {
-    pub field_idx_diff: u32,
+    /// Absolute index into `field_ids`, reconstructed from the DEX file's
+    /// cumulative `field_idx_diff` encoding.
+    pub field_idx: u32,
     pub access_flags: u32,
 }
 
@@ -16,7 +18,11 @@ pub struct EncodedMethod {
 
 #[derive(Debug)]
 pub struct ClassData {
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub static_fields: Vec<EncodedField>,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub instance_fields: Vec<EncodedField>,
     pub direct_methods: Vec<EncodedMethod>,
     pub virtual_methods: Vec<EncodedMethod>,
@@ -30,31 +36,29 @@ impl ClassData {
         let direct_methods_size = reader.read_uleb128()?;
         let virtual_methods_size = reader.read_uleb128()?;
 
-        let mut static_fields = Vec::new();
-        for _ in 0..static_fields_size {
-            static_fields.push(
-                EncodedField {
-                    field_idx_diff: reader.read_uleb128()?,
-                    access_flags: reader.read_uleb128()?,
-                }
-            );
-        }
+        let read_fields = |reader: &mut BinaryReader, count: u32| -> Result<Vec<EncodedField>, ApkError> {
+            let mut fields = Vec::new();
+            let mut field_idx = 0u32;
+            for _ in 0..count {
+                field_idx = field_idx.wrapping_add(reader.read_uleb128()?);
+                fields.push(
+                    EncodedField {
+                        field_idx,
+                        access_flags: reader.read_uleb128()?,
+                    }
+                );
+            }
+            Ok(fields)
+        };
 
-        let mut instance_fields = Vec::new();
-        for _  in 0..instance_fields_size {
-            instance_fields.push(
-                EncodedField {
-                    field_idx_diff: reader.read_uleb128()?,
-                    access_flags: reader.read_uleb128()?,
-                }
-            );
-        }
+        let static_fields = read_fields(reader, static_fields_size)?;
+        let instance_fields = read_fields(reader, instance_fields_size)?;
 
         let read_methods = |reader: &mut BinaryReader, count: u32| -> Result<Vec<EncodedMethod>, ApkError> {
             let mut methods = Vec::new();
             let mut method_idx = 0u32;
             for _ in 0..count {
-                method_idx += reader.read_uleb128()?;
+                method_idx = method_idx.wrapping_add(reader.read_uleb128()?);
                 methods.push(
                     EncodedMethod {
                         method_idx,

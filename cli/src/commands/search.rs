@@ -1,5 +1,7 @@
 use ir::ApkIR;
 
+use crate::commands::disasm::format_instruction;
+
 #[derive(Debug, Clone)]
 pub struct SearchMatch {
     pub kind: String,
@@ -57,7 +59,7 @@ pub fn collect(ir: &ApkIR, query: &str) -> Vec<SearchMatch> {
                 }
 
                 for instruction in &method.instructions {
-                    let text = format!("{:?}", instruction);
+                    let text = format_instruction(instruction, &dex_file.strings);
                     if text.to_lowercase().contains(&query) {
                         matches.push(SearchMatch {
                             kind: "instruction".to_string(),

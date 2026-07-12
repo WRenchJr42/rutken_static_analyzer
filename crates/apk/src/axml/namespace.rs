@@ -3,9 +3,17 @@ use crate::errors::ApkError;
 
 #[derive(Debug)]
 pub struct StartNamespace {
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub line_number: u32,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub comment: u32,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub prefix: u32,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub uri: u32,
 }
 

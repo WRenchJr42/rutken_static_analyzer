@@ -17,7 +17,10 @@ pub fn render(ir: &ApkIR, query: &str) -> String {
                     method.name.split("->").last().unwrap_or(&method.name)
                 ));
                 for instruction in &method.instructions {
-                    output.push_str(&format!("  {}\n", format_instruction(instruction)));
+                    output.push_str(&format!(
+                        "  {}\n",
+                        format_instruction(instruction, &dex_file.strings)
+                    ));
                 }
             }
         }
@@ -26,13 +29,15 @@ pub fn render(ir: &ApkIR, query: &str) -> String {
     output
 }
 
-fn format_instruction(instruction: &Instruction) -> String {
+/// Render an instruction to a human-readable line, resolving string/class/
+/// method/field references against the owning DEX file's string pool.
+pub(crate) fn format_instruction(instruction: &Instruction, strings: &[String]) -> String {
     match instruction {
         Instruction::Const { register, value } => {
             format!("const v{}, {}", register, value)
         }
         Instruction::ConstString { register, value } => {
-            format!("const-string v{}, \"{}\"", register, value)
+            format!("const-string v{}, \"{}\"", register, value.resolve(strings))
         }
         Instruction::Invoke {
             kind,
@@ -51,16 +56,16 @@ fn format_instruction(instruction: &Instruction) -> String {
                 .map(|register| format!("v{}", register))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("{} {{ {} }} {}", kind, registers, method)
+            format!("{} {{ {} }} {}", kind, registers, method.display(strings))
         }
         Instruction::FieldAccess { field } => {
-            format!("field-access {}", field)
+            format!("field-access {}", field.display(strings))
         }
         Instruction::NewInstance { class } => {
-            format!("new-instance {}", class)
+            format!("new-instance {}", class.display(strings))
         }
         Instruction::CheckCast { class } => {
-            format!("check-cast {}", class)
+            format!("check-cast {}", class.display(strings))
         }
         Instruction::MoveResult { register } => {
             format!("move-result v{}", register)

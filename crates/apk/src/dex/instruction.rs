@@ -1,5 +1,15 @@
 use serde::Serialize;
 
+/// A decoded DEX instruction.
+///
+/// Class/method/field/string operands are represented as raw indices into
+/// the enclosing DEX file's string pool (`DexDocument::strings`) rather than
+/// pre-composed strings. This lets IR lowering intern them directly as
+/// `ir::StringRef`s without re-parsing the DEX data. Table lookups (method
+/// ids, field ids, type ids, proto ids) are already resolved to string-pool
+/// indices at decode time; out-of-range table indices resolve to `u32::MAX`,
+/// which is itself out of range for any string pool and is handled by
+/// `ir::StringRef::resolve`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 pub enum Instruction {
@@ -9,21 +19,34 @@ pub enum Instruction {
     },
     ConstString {
         register: u8,
-        value: String,
+        /// String-pool index.
+        string_idx: u32,
     },
     Invoke {
         kind: InvokeKind,
-        method: String,
+        /// String-pool index of the target class's descriptor.
+        class_idx: u32,
+        /// String-pool index of the method name.
+        name_idx: u32,
+        /// String-pool index of the method's shorty descriptor.
+        descriptor_idx: u32,
         registers: Vec<u8>,
     },
     FieldAccess {
-        field: String,
+        /// String-pool index of the target class's descriptor.
+        class_idx: u32,
+        /// String-pool index of the field name.
+        name_idx: u32,
+        /// String-pool index of the field's type descriptor.
+        type_idx: u32,
     },
     NewInstance {
-        class: String,
+        /// String-pool index of the class descriptor.
+        class_idx: u32,
     },
     CheckCast {
-        class: String,
+        /// String-pool index of the class descriptor.
+        class_idx: u32,
     },
 
     MoveResult {
@@ -43,6 +66,7 @@ pub enum Instruction {
     },
 }
 
+/// Kinds of method invocation.
 #[derive(Debug, Clone, Serialize)]
 pub enum InvokeKind {
     Static,
@@ -52,6 +76,7 @@ pub enum InvokeKind {
     Interface,
 }
 
+/// Kinds of control flow branches.
 #[derive(Debug, Clone, Serialize)]
 pub enum BranchKind {
     Goto,

@@ -5,6 +5,7 @@ use crate::findings::Finding;
 use crate::manifest::Manifest;
 use crate::metadata::Metadata;
 
+/// Complete intermediate representation of an APK's analysis.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApkIR {
     pub metadata: Metadata,

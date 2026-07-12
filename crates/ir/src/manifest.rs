@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+/// Android manifest metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Manifest {
     pub package: Option<String>,
@@ -9,6 +10,7 @@ pub struct Manifest {
     pub application: Option<Application>,
 }
 
+/// Application metadata from manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Application {
     pub label: Option<String>,
@@ -17,6 +19,7 @@ pub struct Application {
     pub activities: Vec<Activity>,
 }
 
+/// Activity definition from manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Activity {
     pub name: String,

@@ -1,8 +1,8 @@
 use serde::Serialize;
 
 use crate::binary::BinaryReader;
-use crate::dex::class_data::{ClassData, EncodedMethod};
-use crate::dex::disasm::decode_instruction;
+use crate::dex::class_data::{ClassData, EncodedField, EncodedMethod};
+use crate::dex::disasm::{decode_instruction, resolve_field_components, resolve_method, resolve_type};
 use crate::dex::instruction::Instruction;
 use crate::dex::parser::{DexDocument, DexParser};
 use crate::errors::ApkError;
@@ -19,6 +19,7 @@ pub struct DexModel {
 pub struct ClassModel {
     pub name: String,
     pub methods: Vec<MethodModel>,
+    pub fields: Vec<FieldModel>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -29,6 +30,21 @@ pub struct MethodModel {
     pub instructions: Vec<Instruction>,
 }
 
+/// A class field definition, with `name`/`ty` already resolved to
+/// string-pool indices so IR lowering can intern them without re-parsing.
+#[derive(Debug, Clone, Serialize)]
+pub struct FieldModel {
+    /// String-pool index of the field's name.
+    pub name_idx: u32,
+    /// String-pool index of the field's type descriptor.
+    pub type_idx: u32,
+    pub access_flags: u32,
+}
+
+/// Parse a DEX file and build its model.
+///
+/// Out-of-range indices in the DEX file resolve to sentinel values like
+/// `<bad_type:N>`, `<bad_method:N>`, and `<bad_string:N>` instead of panicking.
 pub fn build_dex_model(name: impl Into<String>, bytes: &[u8]) -> Result<DexModel, ApkError> {
     let dex = DexParser::parse(bytes)?;
     let mut classes = Vec::new();
@@ -58,9 +74,13 @@ pub fn build_dex_model(name: impl Into<String>, bytes: &[u8]) -> Result<DexModel
             &class_data.virtual_methods,
         )?);
 
+        let mut fields = build_fields(&dex, &class_data.static_fields);
+        fields.extend(build_fields(&dex, &class_data.instance_fields));
+
         classes.push(ClassModel {
             name: class_name,
             methods,
+            fields,
         });
     }
 
@@ -72,24 +92,11 @@ pub fn build_dex_model(name: impl Into<String>, bytes: &[u8]) -> Result<DexModel
 }
 
 pub fn resolve_class_name(dex: &DexDocument, class_idx: usize) -> String {
-    let class_type = &dex.type_ids.types[class_idx];
-    dex.strings.strings[class_type.descriptor_idx as usize].clone()
+    resolve_type(class_idx, dex)
 }
 
 pub fn resolve_method_name(dex: &DexDocument, method_idx: usize) -> String {
-    let Some(method) = dex.method_ids.methods.get(method_idx) else {
-        return format!("<bad_method:{}>", method_idx);
-    };
-
-    let class_name = resolve_class_name(dex, method.class_idx as usize);
-    let method_name = dex
-        .strings
-        .strings
-        .get(method.name_idx as usize)
-        .cloned()
-        .unwrap_or_else(|| "<bad>".to_string());
-
-    format!("{}->{}", class_name, method_name)
+    resolve_method(method_idx, dex)
 }
 
 pub fn decode_method_instructions(bytes: &[u8], dex: &DexDocument, code_off: u32) -> Result<Vec<Instruction>, ApkError> {
@@ -129,4 +136,19 @@ fn build_methods(dex: &DexDocument, bytes: &[u8], encoded_methods: &[EncodedMeth
     }
 
     Ok(methods)
+}
+
+fn build_fields(dex: &DexDocument, encoded_fields: &[EncodedField]) -> Vec<FieldModel> {
+    encoded_fields
+        .iter()
+        .map(|field| {
+            let (_class_idx, name_idx, type_idx) =
+                resolve_field_components(field.field_idx as usize, dex);
+            FieldModel {
+                name_idx,
+                type_idx,
+                access_flags: field.access_flags,
+            }
+        })
+        .collect()
 }

@@ -4,7 +4,11 @@ use crate::errors::ApkError;
 #[derive(Debug)]
 pub struct ChunkHeader {
     pub chunk_type: u16,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub header_size: u16,
+    #[allow(dead_code)]
+    // parsed for format completeness; not yet consumed
     pub chunk_size: u32,
 }
 
