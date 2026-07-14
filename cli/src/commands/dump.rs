@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use ir::{ApkIR, DexFile, Instruction, Manifest};
+use ir::{ApkIR, DexFile, InstructionAt, Manifest};
 
 use crate::commands::info;
 
@@ -33,7 +33,7 @@ pub struct ClassInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct MethodInfo {
     pub name: String,
-    pub instructions: Vec<Instruction>,
+    pub instructions: Vec<InstructionAt>,
 }
 
 #[derive(Debug, Clone, Serialize)]

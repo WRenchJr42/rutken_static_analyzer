@@ -16,10 +16,11 @@ pub fn render(ir: &ApkIR, query: &str) -> String {
                     "\n{}\n",
                     method.name.split("->").last().unwrap_or(&method.name)
                 ));
-                for instruction in &method.instructions {
+                for instruction_at in &method.instructions {
                     output.push_str(&format!(
-                        "  {}\n",
-                        format_instruction(instruction, &dex_file.strings)
+                        "  {:04x}: {}\n",
+                        instruction_at.offset,
+                        format_instruction(&instruction_at.instruction, &dex_file.strings)
                     ));
                 }
             }
@@ -74,7 +75,22 @@ pub(crate) fn format_instruction(instruction: &Instruction, strings: &[String]) 
         Instruction::Throw => "throw".to_string(),
         Instruction::Nop => "nop".to_string(),
         Instruction::Payload => "payload".to_string(),
-        Instruction::Branch { kind } => format!("branch {:?}", kind),
+        Instruction::Branch { kind, target } => {
+            format!("branch {:?} -> 0x{:04x}", kind, target)
+        }
+        Instruction::Switch { packed, cases } => {
+            let kind = if *packed {
+                "packed-switch"
+            } else {
+                "sparse-switch"
+            };
+            let cases = cases
+                .iter()
+                .map(|c| format!("{}:0x{:04x}", c.key, c.target))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{} {{ {} }}", kind, cases)
+        }
         Instruction::Unknown { opcode, raw } => {
             format!("unknown 0x{:02x} 0x{:04x}", opcode, raw)
         }

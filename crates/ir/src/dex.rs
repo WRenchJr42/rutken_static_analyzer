@@ -24,7 +24,52 @@ pub struct Method {
     pub name: String,
     pub access_flags: u32,
     pub code_offset: Option<u32>,
-    pub instructions: Vec<Instruction>,
+    pub instructions: Vec<InstructionAt>,
+    /// Exception-handling ranges (try/catch), as data.
+    ///
+    /// Reserved for a future exception-aware CFG pass; CFG exception edges
+    /// are explicitly out of scope for phase 2.3a. Empty for methods with
+    /// no `try`/`catch` blocks (the common case).
+    pub tries: Vec<TryRange>,
+}
+
+/// A decoded instruction paired with its code-unit offset (PC) within the
+/// owning method's `insns`.
+///
+/// This is required to resolve `Instruction::Branch`/`Instruction::Switch`
+/// targets against real instruction positions, and to build a CFG later.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstructionAt {
+    /// Code-unit offset of this instruction within the method's `insns`.
+    pub offset: u32,
+    pub instruction: Instruction,
+}
+
+/// A single `try` range: the `[start_addr, end_addr)` code-unit range it
+/// protects, and its handler.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TryRange {
+    pub start_addr: u32,
+    /// Exclusive end of the protected range.
+    pub end_addr: u32,
+    pub handler: CatchHandler,
+}
+
+/// The handler for a `TryRange`: zero or more typed catches, plus an
+/// optional catch-all handler.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatchHandler {
+    pub catches: Vec<CatchTypeAddr>,
+    /// Code-unit offset of the catch-all handler, if present.
+    pub catch_all_addr: Option<u32>,
+}
+
+/// A single caught exception type and its handler entry point.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatchTypeAddr {
+    pub class: ClassRef,
+    /// Code-unit offset of the handler.
+    pub handler_addr: u32,
 }
 
 /// A class field definition.
@@ -177,13 +222,42 @@ pub enum Instruction {
     Throw,
     Nop,
     Payload,
+    /// A `goto`/`goto-16`/`goto-32` or `if-*` branch.
+    ///
+    /// `target` is the absolute code-unit offset (within the method's
+    /// `insns`) that the branch may jump to. For `BranchKind::Goto` this is
+    /// the only successor (no fallthrough); for all other kinds this is the
+    /// *taken* target, and control also falls through to the next
+    /// instruction when the condition is false.
     Branch {
         kind: BranchKind,
+        target: u32,
+    },
+    /// A `packed-switch` or `sparse-switch` instruction.
+    ///
+    /// `cases` holds the decoded `(key, target)` pairs from the switch
+    /// payload; `target` is an absolute code-unit offset within the
+    /// method's `insns`. There is always an implicit default fallthrough to
+    /// the instruction immediately after the switch (not represented here).
+    Switch {
+        packed: bool,
+        cases: Vec<SwitchCase>,
     },
     Unknown {
         opcode: u8,
         raw: u16,
     },
+}
+
+/// A single `(key, target)` case decoded from a switch payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SwitchCase {
+    /// The switch value (an explicit key for `sparse-switch`, or
+    /// `first_key + n` for `packed-switch`).
+    pub key: i32,
+    /// Absolute code-unit offset (within the method's `insns`) of this
+    /// case's target instruction.
+    pub target: u32,
 }
 
 /// Kinds of method invocation.
@@ -197,11 +271,24 @@ pub enum InvokeKind {
 }
 
 /// Kinds of control flow branches.
+///
+/// The `if-*` mnemonic is preserved where cheap to do so; all `if-*`
+/// variants share the same "conditional, with fallthrough" CFG shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BranchKind {
     Goto,
+    IfEq,
+    IfNe,
+    IfLt,
+    IfGe,
+    IfGt,
+    IfLe,
     IfEqz,
     IfNez,
+    IfLtz,
+    IfGez,
+    IfGtz,
+    IfLez,
 }
 
 #[cfg(test)]
@@ -495,5 +582,105 @@ mod tests {
 
         assert_eq!(original, deserialized);
         assert!(json.contains("\"type\":\"CheckCast\""));
+    }
+
+    #[test]
+    fn test_serde_instruction_branch_roundtrip() {
+        let original = Instruction::Branch {
+            kind: BranchKind::IfLez,
+            target: 42,
+        };
+        let json = serde_json::to_string(&original).expect("serialize failed");
+        let deserialized: Instruction =
+            serde_json::from_str(&json).expect("deserialize failed");
+
+        assert_eq!(original, deserialized);
+        assert!(json.contains("\"type\":\"Branch\""));
+    }
+
+    #[test]
+    fn test_serde_instruction_switch_roundtrip() {
+        let original = Instruction::Switch {
+            packed: true,
+            cases: vec![
+                SwitchCase { key: 0, target: 10 },
+                SwitchCase { key: 1, target: 20 },
+            ],
+        };
+        let json = serde_json::to_string(&original).expect("serialize failed");
+        let deserialized: Instruction =
+            serde_json::from_str(&json).expect("deserialize failed");
+
+        assert_eq!(original, deserialized);
+        assert!(json.contains("\"type\":\"Switch\""));
+    }
+
+    #[test]
+    fn test_serde_instruction_at_roundtrip() {
+        let original = InstructionAt {
+            offset: 4,
+            instruction: Instruction::Nop,
+        };
+        let json = serde_json::to_string(&original).expect("serialize failed");
+        let deserialized: InstructionAt =
+            serde_json::from_str(&json).expect("deserialize failed");
+
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_serde_try_range_roundtrip() {
+        let original = TryRange {
+            start_addr: 0,
+            end_addr: 5,
+            handler: CatchHandler {
+                catches: vec![CatchTypeAddr {
+                    class: ClassRef {
+                        name: StringRef(1),
+                    },
+                    handler_addr: 5,
+                }],
+                catch_all_addr: Some(8),
+            },
+        };
+        let json = serde_json::to_string(&original).expect("serialize failed");
+        let deserialized: TryRange =
+            serde_json::from_str(&json).expect("deserialize failed");
+
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_method_with_tries_and_instruction_offsets_roundtrip() {
+        let original = Method {
+            name: "Lcom/example/A;->guarded".to_string(),
+            access_flags: 0x1,
+            code_offset: Some(0x100),
+            instructions: vec![
+                InstructionAt {
+                    offset: 0,
+                    instruction: Instruction::Nop,
+                },
+                InstructionAt {
+                    offset: 1,
+                    instruction: Instruction::Branch {
+                        kind: BranchKind::Goto,
+                        target: 0,
+                    },
+                },
+            ],
+            tries: vec![TryRange {
+                start_addr: 0,
+                end_addr: 2,
+                handler: CatchHandler {
+                    catches: vec![],
+                    catch_all_addr: Some(2),
+                },
+            }],
+        };
+        let json = serde_json::to_string(&original).expect("serialize failed");
+        let deserialized: Method = serde_json::from_str(&json).expect("deserialize failed");
+
+        assert_eq!(original, deserialized);
     }
 }

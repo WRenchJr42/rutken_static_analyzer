@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "cli",
+    "crates/analysis",
     "crates/apk",
     "crates/engine",
     "crates/ir",

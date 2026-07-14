@@ -2,7 +2,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use cli::commands::{classes, disasm, dump, info, manifest, search, strings};
+use cli::commands::{classes, disasm, dump, info, manifest, search, stats, strings};
 use engine::Analyzer;
 
 #[derive(Debug, Parser)]
@@ -43,6 +43,11 @@ enum Command {
         #[arg(long, value_enum)]
         include: Vec<DumpInclude>,
     },
+    /// Coarse analysis summary (classes/methods/instructions/XREF/CFG
+    /// counts, timing, peak RAM). Hidden: a development/diagnostic command,
+    /// not part of the stable product surface.
+    #[command(hide = true)]
+    Stats,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -52,6 +57,7 @@ enum DumpInclude {
 
 fn main() {
     let cli = Cli::parse();
+    let start = std::time::Instant::now();
 
     let ir = match Analyzer::open(&cli.apk).and_then(|analyzer| analyzer.analyze()) {
         Ok(ir) => ir,
@@ -148,6 +154,12 @@ fn main() {
                     write_line(&format!("{:#?}", report));
                 }
             }
+        }
+        Command::Stats => {
+            let report = stats::collect(&ir);
+            let elapsed = start.elapsed();
+            let peak_rss_kb = stats::peak_rss_kb();
+            write_all(&stats::render(&report, elapsed, peak_rss_kb));
         }
     }
 }

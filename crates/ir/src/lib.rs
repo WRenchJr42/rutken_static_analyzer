@@ -11,8 +11,9 @@ pub mod metadata;
 
 pub use apk::ApkIR;
 pub use dex::{
-    BasicBlock, BranchKind, Class, ClassRef, DexFile, Field, FieldRef, Function, Instruction,
-    InvokeKind, Method, MethodRef, StringRef,
+    BasicBlock, BranchKind, CatchHandler, CatchTypeAddr, Class, ClassRef, DexFile, Field,
+    FieldRef, Function, Instruction, InstructionAt, InvokeKind, Method, MethodRef, StringRef,
+    SwitchCase, TryRange,
 };
 pub use findings::{Finding, FindingSeverity};
 pub use manifest::{Activity, Application, Manifest};

@@ -125,6 +125,41 @@ impl<'a> BinaryReader<'a> {
         Ok(result)
     }
     
+    /// Read a signed LEB128 value, as used for `encoded_catch_handler.size`
+    /// in DEX `code_item` try/catch data.
+    ///
+    /// DEX SLEB128 values are at most 5 bytes (32 bits of payload, sign
+    /// extended from the last byte read).
+    pub fn read_sleb128(&mut self) -> Result<i32, ApkError> {
+        const MAX_BYTES: u32 = 5;
+
+        let mut result = 0i64;
+        let mut shift = 0u32;
+        let mut byte;
+
+        loop {
+            byte = self.read_u8()?;
+            result |= ((byte & 0x7f) as i64) << shift;
+            shift += 7;
+            if byte & 0x80 == 0 {
+                break;
+            }
+            if shift / 7 >= MAX_BYTES {
+                return Err(ApkError::InvalidFormat(
+                    "SLEB128 sequence too long".to_string(),
+                ));
+            }
+        }
+
+        // Sign-extend if the sign bit of the last byte read is set and
+        // there are remaining bits to fill.
+        if shift < 64 && (byte & 0x40) != 0 {
+            result |= -1i64 << shift;
+        }
+
+        Ok(result as i32)
+    }
+
     pub fn read_cstring(&mut self) -> Result<String, ApkError> {
         let start = self.offset;
         while self.read_u8()? != 0 {}
@@ -301,6 +336,39 @@ mod tests {
     fn read_u16_little_endian_round_trip() {
         let mut reader = BinaryReader::new(&[0x34, 0x12]); // 0x1234 in little endian
         assert_eq!(reader.read_u16().unwrap(), 0x1234);
+    }
+
+    #[test]
+    fn read_sleb128_positive_single_byte() {
+        let mut reader = BinaryReader::new(&[0x02]);
+        assert_eq!(reader.read_sleb128().unwrap(), 2);
+    }
+
+    #[test]
+    fn read_sleb128_negative_single_byte() {
+        // -1 encoded as SLEB128 is 0x7f.
+        let mut reader = BinaryReader::new(&[0x7f]);
+        assert_eq!(reader.read_sleb128().unwrap(), -1);
+    }
+
+    #[test]
+    fn read_sleb128_negative_two_bytes() {
+        // -128 encoded as SLEB128 is 0x80, 0x7f.
+        let mut reader = BinaryReader::new(&[0x80, 0x7f]);
+        assert_eq!(reader.read_sleb128().unwrap(), -128);
+    }
+
+    #[test]
+    fn read_sleb128_rejects_overlong_sequence() {
+        let bytes = [0x80, 0x80, 0x80, 0x80, 0x80, 0x00];
+        let mut reader = BinaryReader::new(&bytes);
+        assert!(reader.read_sleb128().is_err());
+    }
+
+    #[test]
+    fn read_sleb128_truncated_with_continuation_bit_set() {
+        let mut reader = BinaryReader::new(&[0x80]);
+        assert!(reader.read_sleb128().is_err());
     }
 
     #[test]

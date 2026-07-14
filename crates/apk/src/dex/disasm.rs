@@ -1,10 +1,6 @@
-use crate::dex::parser::DexDocument;
+use crate::dex::instruction::{BranchKind, Instruction, InvokeKind, SwitchCase};
 use crate::dex::opcode::opcode_width;
-use crate::dex::instruction::{
-    Instruction,
-    InvokeKind,
-    BranchKind,
-};
+use crate::dex::parser::DexDocument;
 
 /// Decode a single instruction at the given program counter.
 ///
@@ -20,11 +16,28 @@ pub fn decode_instruction(insns: &[u16], pc: usize, dex: &DexDocument) -> (Instr
         return (Instruction::Unknown { opcode: 0, raw: 0 }, 0);
     };
     match ins {
-        0x0100 | 0x0200 | 0x0300 => {
-            return (
-                Instruction::Payload,
-                insns.len() - pc
-            );
+        // packed-switch-payload: ushort ident, ushort size, int first_key,
+        // int[size] targets.
+        0x0100 => {
+            let size = get(insns, pc + 1) as usize;
+            return (Instruction::Payload, 4 + size * 2);
+        }
+        // sparse-switch-payload: ushort ident, ushort size, int[size] keys,
+        // int[size] targets.
+        0x0200 => {
+            let size = get(insns, pc + 1) as usize;
+            return (Instruction::Payload, 2 + size * 4);
+        }
+        // fill-array-data-payload: ushort ident, ushort element_width,
+        // uint size, ubyte[] data (data rounded up to a whole code unit).
+        0x0300 => {
+            let element_width = get(insns, pc + 1) as usize;
+            let size = read_u32(insns, pc + 2) as usize;
+            let data_units = element_width
+                .checked_mul(size)
+                .map(|bytes| bytes.div_ceil(2))
+                .unwrap_or(insns.len().saturating_sub(pc));
+            return (Instruction::Payload, 4 + data_units);
         }
 
         _ => {}
@@ -159,47 +172,70 @@ pub fn decode_instruction(insns: &[u16], pc: usize, dex: &DexDocument) -> (Instr
             1
         ),
 
-        0x28 => (
-            Instruction::Branch {
-                kind:
-                    BranchKind::Goto
-            },
-            1
-        ),
+        // goto (10t): signed 8-bit offset in the high byte of the opcode unit.
+        0x28 => {
+            let offset = ((ins >> 8) as i8) as i64;
+            (
+                Instruction::Branch {
+                    kind: BranchKind::Goto,
+                    target: resolve_target(pc, offset),
+                },
+                1
+            )
+        }
 
-        0x29 => (
-            Instruction::Branch {
-                kind:
-                    BranchKind::Goto
-            },
-            2
-        ),
+        // goto/16 (20t): signed 16-bit offset in the next code unit.
+        0x29 => {
+            let offset = read_i16(insns, pc + 1) as i64;
+            (
+                Instruction::Branch {
+                    kind: BranchKind::Goto,
+                    target: resolve_target(pc, offset),
+                },
+                2
+            )
+        }
 
-        0x2a => (
-            Instruction::Branch {
-                kind:
-                    BranchKind::Goto
-            },
-            3
-        ),
+        // goto/32 (30t): signed 32-bit offset across the next two code units.
+        0x2a => {
+            let offset = read_i32(insns, pc + 1) as i64;
+            (
+                Instruction::Branch {
+                    kind: BranchKind::Goto,
+                    target: resolve_target(pc, offset),
+                },
+                3
+            )
+        }
 
-        // switch
-        0x2b | 0x2c => (
-            Instruction::Unknown {
-                opcode,
-                raw:ins
-            },
-            3
-        ),
+        // packed-switch / sparse-switch (31t): signed 32-bit offset (in code
+        // units, relative to this instruction) to the switch payload.
+        0x2b => (decode_switch(insns, pc, true), 3),
+        0x2c => (decode_switch(insns, pc, false), 3),
 
-        // if family
-        0x32..=0x3d => (
-            Instruction::Branch {
-                kind:
-                    BranchKind::IfEqz
-            },
-            2
-        ),
+        // if-test (22t): two registers, then a signed 16-bit offset.
+        0x32..=0x37 => {
+            let offset = read_i16(insns, pc + 1) as i64;
+            (
+                Instruction::Branch {
+                    kind: if_test_kind(opcode),
+                    target: resolve_target(pc, offset),
+                },
+                2
+            )
+        }
+
+        // if-testz (21t): one register, then a signed 16-bit offset.
+        0x38..=0x3d => {
+            let offset = read_i16(insns, pc + 1) as i64;
+            (
+                Instruction::Branch {
+                    kind: if_testz_kind(opcode),
+                    target: resolve_target(pc, offset),
+                },
+                2
+            )
+        }
 
         0x52..=0x5f => {
             let idx = get(insns,pc+1) as usize;
@@ -400,6 +436,114 @@ fn get(data:&[u16], idx:usize) -> u16 {
     *data.get(idx).unwrap_or(&0)
 }
 
+/// Read a signed 16-bit value from a single code unit.
+fn read_i16(insns: &[u16], idx: usize) -> i32 {
+    get(insns, idx) as i16 as i32
+}
+
+/// Read an unsigned 32-bit value from two code units (low unit first).
+fn read_u32(insns: &[u16], idx: usize) -> u32 {
+    let lo = get(insns, idx) as u32;
+    let hi = get(insns, idx + 1) as u32;
+    (hi << 16) | lo
+}
+
+/// Read a signed 32-bit value from two code units (low unit first).
+fn read_i32(insns: &[u16], idx: usize) -> i32 {
+    read_u32(insns, idx) as i32
+}
+
+/// Resolve a signed code-unit offset relative to `pc` into an absolute
+/// code-unit target, clamping to a safe `u32` range instead of
+/// overflowing/underflowing on malformed or adversarial input. Never
+/// panics.
+fn resolve_target(pc: usize, offset: i64) -> u32 {
+    let target = (pc as i64).saturating_add(offset);
+    target.clamp(0, u32::MAX as i64) as u32
+}
+
+/// Map a `22t` if-test opcode (`if-eq` .. `if-le`, 0x32..=0x37) to its
+/// `BranchKind`.
+fn if_test_kind(opcode: u8) -> BranchKind {
+    match opcode {
+        0x32 => BranchKind::IfEq,
+        0x33 => BranchKind::IfNe,
+        0x34 => BranchKind::IfLt,
+        0x35 => BranchKind::IfGe,
+        0x36 => BranchKind::IfGt,
+        _ => BranchKind::IfLe,
+    }
+}
+
+/// Map a `21t` if-testz opcode (`if-eqz` .. `if-lez`, 0x38..=0x3d) to its
+/// `BranchKind`.
+fn if_testz_kind(opcode: u8) -> BranchKind {
+    match opcode {
+        0x38 => BranchKind::IfEqz,
+        0x39 => BranchKind::IfNez,
+        0x3a => BranchKind::IfLtz,
+        0x3b => BranchKind::IfGez,
+        0x3c => BranchKind::IfGtz,
+        _ => BranchKind::IfLez,
+    }
+}
+
+/// Decode a `packed-switch`/`sparse-switch` instruction at `pc`, resolving
+/// its payload (located elsewhere in the same method's `insns`, at a
+/// signed offset relative to `pc`).
+///
+/// The payload's own ident tag (not the calling opcode) determines which
+/// payload format is parsed, so a mismatched/corrupt reference resolves to
+/// an empty case list rather than misinterpreting unrelated data.
+fn decode_switch(insns: &[u16], pc: usize, packed: bool) -> Instruction {
+    let offset = read_i32(insns, pc + 1) as i64;
+    let payload_pc = resolve_target(pc, offset) as usize;
+    let cases = match get(insns, payload_pc) {
+        0x0100 => decode_packed_switch_payload(insns, payload_pc, pc),
+        0x0200 => decode_sparse_switch_payload(insns, payload_pc, pc),
+        _ => Vec::new(),
+    };
+    Instruction::Switch { packed, cases }
+}
+
+/// Decode a `packed-switch-payload` at `payload_pc`. Targets are absolute
+/// code-unit offsets, resolved relative to the *switch instruction's* PC
+/// (`switch_pc`), per the DEX spec.
+fn decode_packed_switch_payload(insns: &[u16], payload_pc: usize, switch_pc: usize) -> Vec<SwitchCase> {
+    let size = get(insns, payload_pc + 1) as usize;
+    let first_key = read_i32(insns, payload_pc + 2);
+
+    (0..size)
+        .map(|i| {
+            let target_offset = read_i32(insns, payload_pc + 4 + i * 2) as i64;
+            SwitchCase {
+                key: first_key.wrapping_add(i as i32),
+                target: resolve_target(switch_pc, target_offset),
+            }
+        })
+        .collect()
+}
+
+/// Decode a `sparse-switch-payload` at `payload_pc`. Targets are absolute
+/// code-unit offsets, resolved relative to the *switch instruction's* PC
+/// (`switch_pc`), per the DEX spec.
+fn decode_sparse_switch_payload(insns: &[u16], payload_pc: usize, switch_pc: usize) -> Vec<SwitchCase> {
+    let size = get(insns, payload_pc + 1) as usize;
+    let keys_start = payload_pc + 2;
+    let targets_start = keys_start + size * 2;
+
+    (0..size)
+        .map(|i| {
+            let key = read_i32(insns, keys_start + i * 2);
+            let target_offset = read_i32(insns, targets_start + i * 2) as i64;
+            SwitchCase {
+                key,
+                target: resolve_target(switch_pc, target_offset),
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -569,20 +713,142 @@ mod tests {
 
     #[test]
     fn decode_instruction_goto_8() {
-        let insns = [0x0028u16]; // goto/8 opcode
+        let insns = [0x0028u16]; // goto/8 opcode, offset 0 -> target == pc
         let dex = minimal_dex();
         let (instr, size) = decode_instruction(&insns, 0, &dex);
         assert_eq!(size, 1);
-        assert!(matches!(instr, Instruction::Branch { kind: BranchKind::Goto }));
+        assert!(matches!(instr, Instruction::Branch { kind: BranchKind::Goto, target: 0 }));
+    }
+
+    #[test]
+    fn decode_instruction_goto_8_negative_offset() {
+        // goto/8 opcode 0x28 with AA = -4 (0xfc): target = pc(0) + (-4) -> clamped to 0.
+        let insns = [0xfc28u16];
+        let dex = minimal_dex();
+        let (instr, _) = decode_instruction(&insns, 0, &dex);
+        assert!(matches!(instr, Instruction::Branch { kind: BranchKind::Goto, target: 0 }));
+    }
+
+    #[test]
+    fn decode_instruction_goto_8_positive_offset() {
+        // goto/8 opcode 0x28 with AA = 5: target = pc(1) + 5 = 6.
+        let insns = [0x0000u16, 0x0528u16];
+        let dex = minimal_dex();
+        let (instr, size) = decode_instruction(&insns, 1, &dex);
+        assert_eq!(size, 1);
+        assert!(matches!(instr, Instruction::Branch { kind: BranchKind::Goto, target: 6 }));
     }
 
     #[test]
     fn decode_instruction_if_eqz() {
-        let insns = [0x0038u16, 0x0000u16]; // if-eqz opcode
+        let insns = [0x0038u16, 0x0000u16]; // if-eqz opcode, offset 0
         let dex = minimal_dex();
         let (instr, size) = decode_instruction(&insns, 0, &dex);
         assert_eq!(size, 2);
-        assert!(matches!(instr, Instruction::Branch { kind: BranchKind::IfEqz }));
+        assert!(matches!(instr, Instruction::Branch { kind: BranchKind::IfEqz, target: 0 }));
+    }
+
+    #[test]
+    fn decode_instruction_if_eq_target() {
+        // if-eq (0x32), offset = 10 -> target = pc(0) + 10 = 10.
+        let insns = [0x0032u16, 0x000au16];
+        let dex = minimal_dex();
+        let (instr, size) = decode_instruction(&insns, 0, &dex);
+        assert_eq!(size, 2);
+        assert!(matches!(instr, Instruction::Branch { kind: BranchKind::IfEq, target: 10 }));
+    }
+
+    #[test]
+    fn decode_instruction_goto_16_target() {
+        // goto/16 (0x29), offset = 3 -> target = pc(0) + 3 = 3.
+        let insns = [0x0029u16, 0x0003u16];
+        let dex = minimal_dex();
+        let (instr, size) = decode_instruction(&insns, 0, &dex);
+        assert_eq!(size, 2);
+        assert!(matches!(instr, Instruction::Branch { kind: BranchKind::Goto, target: 3 }));
+    }
+
+    #[test]
+    fn decode_instruction_goto_32_target() {
+        // goto/32 (0x2a), offset = 0x0001_0000 (lo=0x0000, hi=0x0001) -> target = 65536.
+        let insns = [0x002au16, 0x0000u16, 0x0001u16];
+        let dex = minimal_dex();
+        let (instr, size) = decode_instruction(&insns, 0, &dex);
+        assert_eq!(size, 3);
+        assert!(matches!(instr, Instruction::Branch { kind: BranchKind::Goto, target: 65536 }));
+    }
+
+    #[test]
+    fn decode_instruction_packed_switch() {
+        // packed-switch at pc 0, offset (in code units) = 3 -> payload at pc 3.
+        // payload: ident 0x0100, size 2, first_key 100, targets [10, -5] (relative to switch pc 0).
+        let insns = [
+            0x002bu16, // packed-switch opcode
+            0x0003u16, 0x0000u16, // offset = 3 (lo, hi)
+            0x0100u16, // payload ident
+            0x0002u16, // size = 2
+            0x0064u16, 0x0000u16, // first_key = 100 (lo, hi)
+            0x000au16, 0x0000u16, // target[0] offset = 10
+            0xfffbu16, 0xffffu16, // target[1] offset = -5
+        ];
+        let dex = minimal_dex();
+        let (instr, size) = decode_instruction(&insns, 0, &dex);
+        assert_eq!(size, 3);
+        match instr {
+            Instruction::Switch { packed, cases } => {
+                assert!(packed);
+                assert_eq!(cases.len(), 2);
+                assert_eq!(cases[0], SwitchCase { key: 100, target: 10 });
+                assert_eq!(cases[1], SwitchCase { key: 101, target: 0 });
+            }
+            other => panic!("expected Switch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_instruction_sparse_switch() {
+        // sparse-switch at pc 0, offset = 3 -> payload at pc 3.
+        // payload: ident 0x0200, size 1, key [7], target offset [3] (relative to switch pc 0).
+        let insns = [
+            0x002cu16, // sparse-switch opcode
+            0x0003u16, 0x0000u16, // offset = 3
+            0x0200u16, // payload ident
+            0x0001u16, // size = 1
+            0x0007u16, 0x0000u16, // key[0] = 7
+            0x0003u16, 0x0000u16, // target[0] offset = 3
+        ];
+        let dex = minimal_dex();
+        let (instr, size) = decode_instruction(&insns, 0, &dex);
+        assert_eq!(size, 3);
+        match instr {
+            Instruction::Switch { packed, cases } => {
+                assert!(!packed);
+                assert_eq!(cases, vec![SwitchCase { key: 7, target: 3 }]);
+            }
+            other => panic!("expected Switch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_instruction_switch_with_mismatched_payload_ident_is_safe() {
+        // packed-switch pointing at a payload location whose ident isn't a
+        // recognized payload tag: must resolve to an empty case list, not panic.
+        let insns = [0x002bu16, 0x0003u16, 0x0000u16, 0xffffu16];
+        let dex = minimal_dex();
+        let (instr, _) = decode_instruction(&insns, 0, &dex);
+        assert!(matches!(instr, Instruction::Switch { cases, .. } if cases.is_empty()));
+    }
+
+    #[test]
+    fn decode_instruction_switch_out_of_range_payload_is_safe() {
+        // Offset pointing far beyond the insns array must not panic; the
+        // payload ident lookup safely returns 0 (via `get`'s OOB fallback),
+        // which doesn't match a known payload tag, yielding empty cases.
+        let insns = [0x002bu16, 0xffffu16, 0x7fffu16];
+        let dex = minimal_dex();
+        let (instr, size) = decode_instruction(&insns, 0, &dex);
+        assert_eq!(size, 3);
+        assert!(matches!(instr, Instruction::Switch { cases, .. } if cases.is_empty()));
     }
 
     #[test]

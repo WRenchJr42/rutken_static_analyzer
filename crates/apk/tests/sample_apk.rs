@@ -88,10 +88,11 @@ fn build_dex_model_produces_no_bad_sentinels_for_well_formed_input() {
                     method.name
                 );
 
-                for instruction in &method.instructions {
+                for instruction_at in &method.instructions {
                     // Well-formed input should resolve every operand to a
                     // valid index into the DEX file's string pool.
                     let in_range = |idx: u32| (idx as usize) < model.strings.len();
+                    let instruction = &instruction_at.instruction;
 
                     match instruction {
                         apk::dex::instruction::Instruction::Invoke {

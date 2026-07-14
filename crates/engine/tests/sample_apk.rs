@@ -54,8 +54,8 @@ fn analyzer_resolves_mainactivity_and_onclick_without_bad_sentinels() {
                     }
 
                     // Check all instructions for bad sentinels
-                    for instruction in &method.instructions {
-                        match instruction {
+                    for instruction_at in &method.instructions {
+                        match &instruction_at.instruction {
                             ir::Instruction::Invoke { method, .. } => {
                                 let display = method.display(&dex_file.strings);
                                 assert!(

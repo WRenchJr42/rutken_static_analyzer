@@ -2,8 +2,12 @@ use serde::Serialize;
 
 use crate::binary::BinaryReader;
 use crate::dex::class_data::{ClassData, EncodedField, EncodedMethod};
-use crate::dex::disasm::{decode_instruction, resolve_field_components, resolve_method, resolve_type};
-use crate::dex::instruction::Instruction;
+use crate::dex::code_item::{CatchHandler as RawCatchHandler, TryItem as RawTryItem};
+use crate::dex::disasm::{
+    decode_instruction, resolve_field_components, resolve_method, resolve_type,
+    resolve_type_descriptor_idx,
+};
+use crate::dex::instruction::InstructionAt;
 use crate::dex::parser::{DexDocument, DexParser};
 use crate::errors::ApkError;
 use crate::reader::should_skip_class;
@@ -27,7 +31,39 @@ pub struct MethodModel {
     pub name: String,
     pub access_flags: u32,
     pub code_off: u32,
-    pub instructions: Vec<Instruction>,
+    pub instructions: Vec<InstructionAt>,
+    /// Exception-handling ranges, as data. See [`TryModel`].
+    pub tries: Vec<TryModel>,
+}
+
+/// A single caught exception type and its handler entry point, with the
+/// type index already resolved to a string-pool index so IR lowering can
+/// intern it directly (matching the `CheckCast`/`NewInstance` pattern).
+#[derive(Debug, Clone, Serialize)]
+pub struct CatchTypeAddrModel {
+    /// String-pool index of the caught exception type's descriptor.
+    pub class_idx: u32,
+    /// Code-unit offset of the handler.
+    pub handler_addr: u32,
+}
+
+/// The handler for a [`TryModel`]: zero or more typed catches, plus an
+/// optional catch-all handler.
+#[derive(Debug, Clone, Serialize)]
+pub struct CatchHandlerModel {
+    pub catches: Vec<CatchTypeAddrModel>,
+    pub catch_all_addr: Option<u32>,
+}
+
+/// A single `try` range: the `[start_addr, end_addr)` code-unit range it
+/// protects, and its handler.
+///
+/// Data only; reserved for a future exception-aware CFG pass.
+#[derive(Debug, Clone, Serialize)]
+pub struct TryModel {
+    pub start_addr: u32,
+    pub end_addr: u32,
+    pub handler: CatchHandlerModel,
 }
 
 /// A class field definition, with `name`/`ty` already resolved to
@@ -99,21 +135,57 @@ pub fn resolve_method_name(dex: &DexDocument, method_idx: usize) -> String {
     resolve_method(method_idx, dex)
 }
 
-pub fn decode_method_instructions(bytes: &[u8], dex: &DexDocument, code_off: u32) -> Result<Vec<Instruction>, ApkError> {
+/// Decode a method's bytecode and exception-handling ranges from its
+/// `code_item` at `code_off`.
+pub fn decode_method_code(
+    bytes: &[u8],
+    dex: &DexDocument,
+    code_off: u32,
+) -> Result<(Vec<InstructionAt>, Vec<TryModel>), ApkError> {
     let code = crate::dex::code_item::CodeItem::parse(&mut BinaryReader::new(bytes), code_off)?;
     let mut instructions = Vec::new();
     let mut pc = 0;
 
     while pc < code.instructions.len() {
         let (instruction, size) = decode_instruction(&code.instructions, pc, dex);
-        instructions.push(instruction);
+        instructions.push(InstructionAt {
+            // `pc` is bounded by `code.instructions.len()` above, which is
+            // itself populated from a DEX `insns_size: u32`, so this never
+            // truncates in practice; saturate rather than panic regardless.
+            offset: pc.try_into().unwrap_or(u32::MAX),
+            instruction,
+        });
         if size == 0 {
             break;
         }
         pc += size;
     }
 
-    Ok(instructions)
+    let tries = code.tries.iter().map(|t| convert_try(t, dex)).collect();
+
+    Ok((instructions, tries))
+}
+
+fn convert_try(raw: &RawTryItem, dex: &DexDocument) -> TryModel {
+    TryModel {
+        start_addr: raw.start_addr,
+        end_addr: raw.end_addr,
+        handler: convert_handler(&raw.handler, dex),
+    }
+}
+
+fn convert_handler(raw: &RawCatchHandler, dex: &DexDocument) -> CatchHandlerModel {
+    CatchHandlerModel {
+        catches: raw
+            .catches
+            .iter()
+            .map(|c| CatchTypeAddrModel {
+                class_idx: resolve_type_descriptor_idx(c.type_idx as usize, dex),
+                handler_addr: c.handler_addr,
+            })
+            .collect(),
+        catch_all_addr: raw.catch_all_addr,
+    }
 }
 
 fn build_methods(dex: &DexDocument, bytes: &[u8], encoded_methods: &[EncodedMethod]) -> Result<Vec<MethodModel>, ApkError> {
@@ -121,10 +193,10 @@ fn build_methods(dex: &DexDocument, bytes: &[u8], encoded_methods: &[EncodedMeth
 
     for encoded in encoded_methods {
         let name = resolve_method_name(dex, encoded.method_idx as usize);
-        let instructions = if encoded.code_off == 0 {
-            Vec::new()
+        let (instructions, tries) = if encoded.code_off == 0 {
+            (Vec::new(), Vec::new())
         } else {
-            decode_method_instructions(bytes, dex, encoded.code_off)?
+            decode_method_code(bytes, dex, encoded.code_off)?
         };
 
         methods.push(MethodModel {
@@ -132,6 +204,7 @@ fn build_methods(dex: &DexDocument, bytes: &[u8], encoded_methods: &[EncodedMeth
             access_flags: encoded.access_flags,
             code_off: encoded.code_off,
             instructions,
+            tries,
         });
     }
 
